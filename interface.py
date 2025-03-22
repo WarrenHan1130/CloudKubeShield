@@ -10,6 +10,7 @@ import json
 import scan
 import report_generator
 from datetime import datetime
+import remediation
 
 def interactive_cli():
     print("Welcome to AWS Tool")
@@ -119,6 +120,8 @@ def create_k8s_session(session):
     '''Create a Kubernetes session'''
     try:
         eks_client = session.client("eks")
+        region = eks_client._client_config.region_name
+        print(f"Region: {region}")
         cluster_names = []
          #list all clusters in the account
         response = eks_client.list_clusters()
@@ -172,10 +175,27 @@ def create_k8s_session(session):
                 # Set the SSL certificate path to verify secure connection to the cluster API server
                 kconfig.ssl_ca_cert = cafile.name if cafile.name else ""
 
-                result = scan.cis_2_1_1(cluster_data)
-                results = [result]
+                """
+                result_1 = scan.cis_2_1_1(cluster_data)
+                result_2 = scan.cis_2_1_2(kconfig, cluster_name, region)
+                result_3 = scan.cis_3_1_1(kconfig, cluster_name, region)
+                result_4 = scan.cis_3_1_2(kconfig, cluster_name, region)
+                result_5 = scan.cis_3_1_3(kconfig, cluster_name, region)
+                result_6 = scan.cis_3_1_4(kconfig, cluster_name, region)
+                result_7 = scan.cis_3_2_1(kconfig, cluster_name, region)
+
+                results = [result_1, result_2, result_3, result_4, result_5, result_6, result_7]
                 report_filename = f"compliance_report_{cluster_name}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.pdf"
                 report_generator.generate_pdf_report(results, report_filename, cluster_name, include_compliant=True)
+
+                if result_1['compliant'] == False:
+                    remediation.remediate_cis_2_1_1(eks_client, cluster_name)
+                
+                #if result_3['compliant'] == False:
+                    #remediation.remediate_cis_3_1_1(cluster_name, region, result_3['details'])
+                """
+                
+                
        
     except Exception as e:
         print(f"Error creating Kubernetes session: {e}")
