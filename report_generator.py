@@ -11,6 +11,24 @@ CHECK_DESCRIPTIONS = {
         "title": "Enable audit Logs",
         "description": "Enable control plane logs in Amazon EKS to capture API server requests, including audit, authenticator, controller manager, and scheduler logs. These logs, exported to CloudWatch, enhance security by detecting anomalies while ensuring persistent storage with minimal performance impact.",
         "remediation": "Enable all control plane log types in the EKS console under the cluster's 'Logging' configuration."
+    },
+
+    "2.1.2": {
+        "title": "Ensure audit logs are collected and managed",
+        "description": "Ensure that audit logs are collected and managed in accordance with the enterprise's audit log management process across all Kubernetes components.",
+        "remediation": "Enable the audit logs in each worker node then transfer the logs to CloudWatch."
+    },
+
+    "3.1.1": {
+        "title": "Ensure that the kubeconfig file permissions are set to 644 or more restrictive",
+        "description": "If kubelet is running, and if it is configured by a kubeconfig file, ensure that the proxy kubeconfig file has permissions of 644 or more restrictive.",
+        "remediation": "Run the command chmod 644 <kubeconfig file> (based on the file location on your system) on the each worker node."
+    },
+
+    "3.1.2": {
+        "title": "Ensure that the kubelet kubeconfig file ownership is set to root:root",
+        "description": "If kubelet is running, and if it is configured by a kubeconfig file, ensure that the proxy kubeconfig file has ownership of root:root.",
+        "remediation": "Run the command chown root:root <kubeconfig file> (based on the file location on your system) on the each worker node."
     }
 }
 
@@ -68,33 +86,65 @@ def generate_pdf_report(results, filename, cluster_name, include_compliant=True)
     elements.append(Spacer(1, 0.5*inch))
 
     # Compliance Requirements
-    check_ids = (result['check_id'] for result in filtered_results)
+    check_ids = [result['check_id'] for result in filtered_results]
     elements.append(Paragraph("Compliance Requirements", subtitle_style))
     for check_id in check_ids:
         check_info = CHECK_DESCRIPTIONS.get(check_id, {})
         elements.append(Paragraph(f"{check_id}: {check_info.get('title', '')}", subtitle_style))
-            
-        elements.append(Paragraph(f"Description: {check_info['description']}", normal_style))
-        elements.append(Spacer(1, 0.1*inch))
-            
-        elements.append(Paragraph(f"Remediation: {check_info['remediation']}", normal_style))
-            
+        
+        # 检查是否存在必要的键，避免KeyError
+        if 'description' in check_info:    
+            elements.append(Paragraph(f"Description: {check_info['description']}", normal_style))
+            elements.append(Spacer(1, 0.1*inch))
+        
+        if 'remediation' in check_info:
+            elements.append(Paragraph(f"Remediation: {check_info['remediation']}", normal_style))
+        
         elements.append(Spacer(1, 0.25*inch))
 
     # Detailed Findings
     elements.append(Paragraph("Detailed Findings", subtitle_style))
 
+    # 创建表格样式
+    cell_style = ParagraphStyle(
+        name='CellStyle',
+        parent=normal_style,
+        fontSize=9,
+        leading=10
+    )
+    
+    header_style = ParagraphStyle(
+        name='HeaderStyle',
+        parent=normal_style,
+        fontSize=10,
+        leading=12,
+        fontName='Helvetica-Bold'
+    )
+
+    # 表头也改为Paragraph对象
     table_data = [
-        ["Check ID", "Check Title", "Status", "Details"]
+        [
+            Paragraph("Check ID", header_style),
+            Paragraph("Check Title", header_style),
+            Paragraph("Status", header_style),
+            Paragraph("Details", header_style)
+        ]
     ]
 
     for result in filtered_results:
         check_id = result['check_id']
-        check_title = result.get('title')
+        check_title = result.get('title', '')
         status = "Compliant" if result['compliant'] else "Non-Compliant"
-        details = result.get('details', {})
+        details = str(result.get('details', {}))
 
-        table_data.append([check_id, check_title, status, details])
+        # 将所有字符串转换为Paragraph对象
+        row = [
+            Paragraph(check_id, cell_style),
+            Paragraph(check_title, cell_style),
+            Paragraph(status, cell_style),
+            Paragraph(details, cell_style)
+        ]
+        table_data.append(row)
     
     # Create table
     table = Table(table_data, repeatRows=1)
