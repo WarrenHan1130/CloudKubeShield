@@ -1,7 +1,18 @@
+import time
 import boto3
 import subprocess
 import tempfile
 import os
+
+def get_instance_id_by_node(ec2_client, node_name):
+    try:
+        resp = ec2_client.describe_instances(
+            Filters=[{"Name": "private-dns-name", "Values": [node_name]}]
+        )
+        return resp["Reservations"][0]["Instances"][0]["InstanceId"]
+    except Exception as e:
+        print(f"[ERROR] Could not find instance ID for {node_name}: {e}")
+        return None
 
 def remediate_cis_2_1_1(client, cluster_name):
     print(f"Remediating CIS 2.1.1 for cluster {cluster_name}")
@@ -307,4 +318,61 @@ def remediate_cis_3_1_4(cluster_name, region, non_compliant_nodes):
             if temp_file_path and os.path.exists(temp_file_path):
                 os.unlink(temp_file_path)
 
+    return True
+
+def remediate_3_2_1(region, non_compliant_nodes):
+
+    ec2 = boto3.client("ec2", region_name=region)
+    ssm = boto3.client("ssm", region_name=region)
+
+    for node_name in non_compliant_nodes.keys():
+
+        # Step 1: Get instance ID
+        instance_id = get_instance_id_by_node(ec2, node_name)
+        if not instance_id:
+            print(f"[SKIP] Could not resolve EC2 instance ID for {node_name}")
+            continue
+
+        # Step 2: Check if managed by SSM
+        try:
+            info = ssm.describe_instance_information(
+                Filters=[{"Key": "InstanceIds", "Values": [instance_id]}]
+            )
+            if not info["InstanceInformationList"]:
+                print(f"[SKIP] Instance {instance_id} is not managed by SSM")
+                continue
+        except Exception as e:
+            print(f"[ERROR] SSM status check failed for {instance_id}: {e}")
+            continue
+
+        # Step 3: Execute remediation command (disable anonymous auth and restart kubelet)
+        patch_and_restart_cmd = """
+CONFIG=/etc/kubernetes/kubelet/kubelet-config.json
+if [ -f "$CONFIG" ]; then
+  jq '.authentication.anonymous.enabled = false' "$CONFIG" > /tmp/tmp-kubelet-config.json && \
+  mv /tmp/tmp-kubelet-config.json "$CONFIG" && \
+  systemctl restart kubelet
+else
+  echo "Config not found" && exit 1
+fi
+"""
+        try:
+            res = ssm.send_command(
+                InstanceIds=[instance_id],
+                DocumentName="AWS-RunShellScript",
+                Parameters={'commands': [patch_and_restart_cmd]},
+            )
+            command_id = res["Command"]["CommandId"]
+            time.sleep(2)
+
+            result = ssm.get_command_invocation(
+                CommandId=command_id, InstanceId=instance_id
+            )
+
+            if result["Status"] != "Success":
+                print(f"[ERROR] Remediation failed on {node_name}: {result['StandardErrorContent']}")
+                
+        except Exception as e:
+            print(f"[ERROR] SSM command failed for {node_name}: {e}")
+    
     return True

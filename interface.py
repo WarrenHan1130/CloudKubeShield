@@ -182,18 +182,30 @@ def create_k8s_session(session):
                 result_4 = scan.cis_3_1_2(kconfig, cluster_name, region)
                 result_5 = scan.cis_3_1_3(kconfig, cluster_name, region)
                 result_6 = scan.cis_3_1_4(kconfig, cluster_name, region)
+                """ 
                 result_7 = scan.cis_3_2_1(kconfig, cluster_name, region)
+                """
+                result_8 = scan.cis_3_2_2(kconfig, cluster_name, region)
+                result_9 = scan.cis_3_2_3(kconfig, cluster_name, region)
+                result_10 = scan.cis_3_2_4(kconfig, cluster_name, region)
+                result_11 = scan.cis_3_2_5(kconfig, cluster_name, region)
+                result_12 = scan.cis_3_2_6(kconfig, cluster_name, region)"""
 
-                results = [result_1, result_2, result_3, result_4, result_5, result_6, result_7]
-                report_filename = f"compliance_report_{cluster_name}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.pdf"
-                report_generator.generate_pdf_report(results, report_filename, cluster_name, include_compliant=True)
 
-                if result_1['compliant'] == False:
-                    remediation.remediate_cis_2_1_1(eks_client, cluster_name)
+                #results = [result_1, result_2, result_3, result_4, result_5, result_6, result_7, result_8, result_9, result_10, result_11, result_12]
+                #report_filename = f"compliance_report_{cluster_name}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.pdf"
+                #report_generator.generate_pdf_report(results, report_filename, cluster_name, include_compliant=True)
+
+                #if result_1['compliant'] == False:
+                    #remediation.remediate_cis_2_1_1(eks_client, cluster_name)
+                print(result_7)
+                if result_7['compliant'] == False:
+                    result=remediation.remediate_3_2_1(region, result_7['details'])
+                    print(result)
                 
                 #if result_3['compliant'] == False:
                     #remediation.remediate_cis_3_1_1(cluster_name, region, result_3['details'])
-                """
+            
                 
                 
        
