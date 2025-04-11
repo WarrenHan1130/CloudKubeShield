@@ -1,3 +1,4 @@
+import traceback
 import boto3
 import kubernetes
 import tempfile
@@ -32,6 +33,9 @@ def interactive_cli():
             print("  test-connection - Test AWS connection")
             print("  help - Display this help information")
             print("  exit - Exit the program")
+            print("  k8s - Scan and remediate Kubernetes clusters")
+            print("  skip-checks - Configure which checks to skip")
+            print("  enable-optional-fix - Enable optional fixes")
 
         elif command.lower() == 'configure':
             profile = input("Profile name (leave empty for default): ").strip()
@@ -40,7 +44,9 @@ def interactive_cli():
         elif command.lower() == 'k8s':
             profile = input("Profile name (leave empty for default): ").strip()
             session = create_aws_session(profile if profile else None)
-            create_k8s_session(session) 
+            skip_checks = load_skip_config()
+            enable_fix_ids = load_enable_fix_config()
+            create_k8s_session(session, skip_checks=skip_checks, enable_fix_ids=enable_fix_ids) 
         
         elif command.lower() == 'install':
             print("Installing required dependencies...")
@@ -56,6 +62,16 @@ def interactive_cli():
         elif command.lower() == 'test-connection':
             profile = input("Profile name (leave empty for default): ").strip()
             test_connection(profile if profile else None)
+
+        elif command.lower() == 'skip-checks':
+            skip_checks = select_checks_to_skip()
+            save_skip_config(skip_checks)
+            print(f"Skipping checks: {', '.join([str(num) for num in skip_checks])}")
+
+        elif command.lower() == 'enable-optional-fix':
+            enable_fix_ids = select_fix_enable_checks()
+            save_enable_fix_config(enable_fix_ids)
+            print(f"Enabling fixes for checks: {', '.join([str(num) for num in enable_fix_ids])}")
 
         else:
             print(f"Unknown command: {command}")
@@ -94,44 +110,104 @@ def get_all_aws_profiles():
     config.read(config_path)
     return config.sections()
 
+def get_cis_remediation():
+    return [
+        {"id": "4.1.1", "number": 1, "name": "Ensure that the cluster-admin role is only used where required", "enable_fix": True},
+        {"id": "4.1.5", "number": 2, "name": "Ensure that default service accounts are not actively used.", "enable_fix": True},
+        {"id": "4.2.1", "number": 3, "name": "Minimize the admission of privileged containers", "enable_fix": True},
+        {"id": "4.3.2", "number": 4, "name": "Ensure that all Namespaces have Network Policies defined", "enable_fix": True},
+        {"id": "4.5.2", "number": 5, "name": "The default namespace should not be used", "enable_fix": True},
+        {"id": "5.2.1", "number": 6, "name": "Prefer using dedicated EKS Service Accounts", "enable_fix": True},
+        {"id": "5.4.1", "number": 7, "name": "Restrict Access to the Control Plane Endpoint", "enable_fix": True},
+        {"id": "5.4.2", "number": 8, "name": "Ensure clusters are created with Private Endpoint Enabled and Public Access Disabled", "enable_fix": True},
+        {"id": "5.4.3", "number": 9, "name": "Ensure clusters are created with Private Nodes", "enable_fix": True},
+    ]
+
 def get_cis_checks():
    
     return [
-        {"id": "2.1.1", "number": 1, "name": "Ensure Amazon EKS control plane logging is enabled"},
-        {"id": "2.1.2", "number": 2, "name": "Ensure Amazon EKS cluster endpoint access is restricted"},
-        {"id": "3.1.1", "number": 3, "name": "Ensure security groups for EKS clusters restrict access"},
-        {"id": "3.1.2", "number": 4, "name": "Ensure that EKS security groups restrict access to API server"},
-        {"id": "3.1.3", "number": 5, "name": "Ensure EKS clusters are created with Private Endpoint"},
-        {"id": "3.1.4", "number": 6, "name": "Ensure EKS clusters are configured with security groups"},
-        {"id": "3.2.1", "number": 7, "name": "Ensure EKS Clusters are created with KMS encryption"},
-        {"id": "3.2.2", "number": 8, "name": "Ensure EKS Clusters have Secrets Encryption Enabled"},
-        {"id": "3.2.3", "number": 9, "name": "Ensure EKS Clusters audit logs are enabled"},
-        {"id": "3.2.4", "number": 10, "name": "Ensure EKS Clusters are using latest platform version"},
-        {"id": "3.2.5", "number": 11, "name": "Ensure EKS Clusters are using latest Kubernetes version"},
-        {"id": "3.2.6", "number": 12, "name": "Ensure EKS Clusters have endpoint public access disabled"},
-        {"id": "3.2.7", "number": 13, "name": "Ensure EKS Cluster endpoint private access is enabled"},
-        {"id": "3.2.8", "number": 14, "name": "Ensure EKS Cluster Subnets are specific"},
-        {"id": "3.2.9", "number": 15, "name": "Ensure EKS has adequate logging and monitoring"},
-        {"id": "4.1.1", "number": 16, "name": "Ensure that RBAC is enabled and used"},
-        {"id": "4.1.2", "number": 17, "name": "Ensure RBAC permissions are limited to necessary roles"},
-        {"id": "4.1.3", "number": 18, "name": "Ensure pods have limited access to host"},
-        {"id": "4.1.4", "number": 19, "name": "Ensure impersonation permissions are restricted"},
-        {"id": "4.1.5", "number": 20, "name": "Ensure default service account has no roles or cluster roles bound"},
-        {"id": "4.1.6", "number": 21, "name": "Ensure service accounts tokens are only used where necessary"},
-        {"id": "4.1.7", "number": 22, "name": "Ensure pod security policies are used"},
-        {"id": "4.1.8", "number": 23, "name": "Ensure role-based access control is used"},
-        {"id": "4.2.1", "number": 24, "name": "Ensure container host security"},
-        {"id": "4.2.2", "number": 25, "name": "Ensure container filesystem security"},
-        {"id": "4.2.3", "number": 26, "name": "Ensure container network security"},
-        {"id": "4.2.4", "number": 27, "name": "Ensure container runtime security"},
-        {"id": "4.2.5", "number": 28, "name": "Ensure container process security"},
-        {"id": "4.3.1", "number": 29, "name": "Ensure EKS nodes are using optimal OS AMI"},
-        {"id": "4.3.2", "number": 30, "name": "Ensure nodes have adequate security measures"},
-        {"id": "4.4.1", "number": 31, "name": "Ensure cluster networking configuration is secure"},
-        {"id": "4.4.2", "number": 32, "name": "Ensure network policy is configured properly"},
-        {"id": "4.5.1", "number": 33, "name": "Ensure EKS clusters are properly secured"},
-        {"id": "4.5.2", "number": 34, "name": "Ensure EKS clusters have critical security patches applied"}
+        {"id": "2.1.1", "number": 1, "name": "Enable audit Logs"},
+        {"id": "2.1.2", "number": 2, "name": "Ensure audit logs are collected and managed"},
+        {"id": "3.1.1", "number": 3, "name": "Ensure that the kubeconfig file permissions are set to 644 or more restrictive."},
+        {"id": "3.1.2", "number": 4, "name": "Ensure that the kubelet kubeconfig file ownership is set to root:root"},
+        {"id": "3.1.3", "number": 5, "name": "Ensure that the kubelet kubeconfig file permissions are set to 644 or more restrictive"},
+        {"id": "3.1.4", "number": 6, "name": "Ensure that the kubelet config file permissions are set to 644 or more restrictive"},
+        {"id": "3.2.1", "number": 7, "name": "Ensure that the Anonymous Auth is Not Enabled"},
+        {"id": "3.2.2", "number": 8, "name": "Ensure that the --authorization-mode argument is not set to AlwaysAllow"},
+        {"id": "3.2.3", "number": 9, "name": "Ensure that a Client CA File is Configured"},
+        {"id": "3.2.4", "number": 10, "name": "Ensure that the --read-only-port is disabled"},
+        {"id": "3.2.5", "number": 11, "name": "Ensure that the --streaming-connection-idle-timeout argument is not set to 0"},
+        {"id": "3.2.6", "number": 12, "name": "Ensure that the --make-iptables-util-chains argument is set to true"},
+        {"id": "3.2.7", "number": 13, "name": "Ensure that the --eventRecordQPS argument is set to 0 or a level which ensures appropriate event capture"},
+        {"id": "3.2.8", "number": 14, "name": "Ensure that the --rotate-certificates argument is not present or is set to true"},
+        {"id": "3.2.9", "number": 15, "name": "Ensure that the RotateKubeletServerCertificate feature gate is enabled"},
+        {"id": "4.1.1", "number": 16, "name": "Ensure that the cluster-admin role is only used where required"},
+        {"id": "4.1.2", "number": 17, "name": "Ensure that access to Kubernetes secrets is restricted"},
+        {"id": "4.1.3", "number": 18, "name": "Minimize wildcard use in Roles and ClusterRoles"},
+        {"id": "4.1.4", "number": 19, "name": "Minimize access to create pods"},
+        {"id": "4.1.5", "number": 20, "name": "Ensure that default service accounts are not actively used."},
+        {"id": "4.1.6", "number": 21, "name": "Ensure that Service Account Tokens are only mounted where necessary"},
+        {"id": "4.1.7", "number": 22, "name": "Cluster Access Manager API to streamline and enhance the management of access controls within EKS clusters"},
+        {"id": "4.1.8", "number": 23, "name": "Limit use of the Bind, Impersonate and Escalate permissions in the Kubernetes cluster"},
+        {"id": "4.2.1", "number": 24, "name": "Minimize the admission of privileged containers"},
+        {"id": "4.2.2", "number": 25, "name": "Minimize the admission of containers wishing to share the host process ID namespace"},
+        {"id": "4.2.3", "number": 26, "name": "Minimize the admission of containers wishing to share the host IPC namespace"},
+        {"id": "4.2.4", "number": 27, "name": "Minimize the admission of containers wishing to share the host network namespace"},
+        {"id": "4.2.5", "number": 28, "name": "Minimize the admission of containers with allowPrivilegeEscalation"},
+        {"id": "4.3.1", "number": 29, "name": "Ensure CNI plugin supports network policies"},
+        {"id": "4.3.2", "number": 30, "name": "Ensure that all Namespaces have Network Policies defined"},
+        {"id": "4.4.1", "number": 31, "name": "Prefer using secrets as files over secrets as environment variables"},
+        {"id": "4.4.2", "number": 32, "name": "Consider external secret storage"},
+        {"id": "4.5.1", "number": 33, "name": "Create administrative boundaries between resources using namespaces"},
+        {"id": "4.5.2", "number": 34, "name": "The default namespace should not be used"},
+        {"id": "5.1.1", "number": 35, "name": "5.1.1 Ensure Image Vulnerability Scanning using Amazon ECR image scanning or a third party provider"},
+        {"id": "5.1.2", "number": 36, "name": "Minimize user access to Amazon ECR"},
+        {"id": "5.1.3", "number": 37, "name": "Minimize cluster access to read-only for Amazon ECR"},
+        {"id": "5.1.4", "number": 38, "name": "Minimize Container Registries to only those approved"},
+        {"id": "5.2.1", "number": 39, "name": "Prefer using dedicated EKS Service Accounts"},
+        {"id": "5.3.1", "number": 40, "name": "Ensure Kubernetes Secrets are encrypted using Customer Master Keys (CMKs) managed in AWS KMS"},
+        {"id": "5.4.1", "number": 41, "name": "Restrict Access to the Control Plane Endpoint"},
+        {"id": "5.4.2", "number": 42, "name": "Ensure clusters are created with Private Endpoint Enabled and Public Access Disabled"},
+        {"id": "5.4.3", "number": 43, "name": "Ensure clusters are created with Private Nodes"},
+        {"id": "5.4.4", "number": 44, "name": "Ensure Network Policy is Enabled and set as appropriate"},
+        {"id": "5.4.5", "number": 45, "name": "Encrypt traffic to HTTPS load balancers with TLS certificates"},
+        {"id": "5.5.1", "number": 46, "name": "Manage Kubernetes RBAC users with AWS IAM Authenticator for Kubernetes or Upgrade to AWS CLI v1.16.156 or greater"},
     ]
+
+def select_fix_enable_checks():
+    checks = get_cis_remediation()
+    print("Any fix below is optional and may cause issues with the cluster. Use at your own risk.")
+    print("\nThese checks support optional remediation (enable_fix=False by default):")
+    
+    for check in checks:
+        print(f"{check['number']}. CIS {check['id']}: {check['name']}")
+
+    input_ids = input("\nEnter the numbers to enable remediation (comma separated, or press Enter to skip all): ").strip()
+    enable_fix_ids = []
+
+    if input_ids:
+        try:
+            selected_numbers = [int(i.strip()) for i in input_ids.split(",") if i.strip().isdigit()]
+            enable_fix_ids = [check["id"] for check in checks if check["number"] in selected_numbers]
+        except ValueError:
+            print("Invalid input. No enable_fix will be set to True.")
+    
+    return enable_fix_ids
+
+def save_enable_fix_config(enable_fix_ids):
+    CONFIG_FILE = "eks_remediation_config.json"
+    with open(CONFIG_FILE, 'w') as f:
+        json.dump({"enable_fix_ids": enable_fix_ids}, f)
+    print(f"Configuration saved to {CONFIG_FILE}")
+
+def load_enable_fix_config():
+    CONFIG_FILE = "eks_remediation_config.json"
+    try:
+        with open(CONFIG_FILE, 'r') as f:
+            config = json.load(f)
+            return config.get("enable_fix_ids", [])
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
 
 def select_checks_to_skip():
     checks = get_cis_checks()
@@ -168,10 +244,7 @@ def load_skip_config():
         return []
 
 def configure_aws_profile(profile_name=None):
-    """
-    Call aws configure command to set up AWS credentials for the specified profile
-    If profile_name is not specified, configure the default profile
-    """
+
     cmd = ['aws', 'configure']
     
     if profile_name:
@@ -182,7 +255,7 @@ def configure_aws_profile(profile_name=None):
     
     try:
         # Run aws configure command
-        subprocess.run(cmd, shell=True, check=True)
+        subprocess.run(cmd, check=True)
         
         # Check if configuration was successful
         aws_dir = os.path.expanduser("~/.aws")
@@ -203,9 +276,7 @@ def configure_aws_profile(profile_name=None):
         sys.exit(1)
 
 def create_aws_session(profile_name=None):
-    """
-    Use boto3 to create a session with the specified AWS profile
-    """
+
     try:
         session = boto3.Session(profile_name=profile_name)
         return session
@@ -213,8 +284,8 @@ def create_aws_session(profile_name=None):
         print(f"Error creating session with '{profile_name}' Specific error is: {e}")
         return None
             
-def create_k8s_session(session, skip_checks=None):
-    '''Create a Kubernetes session'''
+def create_k8s_session(session, profile, skip_checks=None, enable_fix_ids=None):
+
     try:
         eks_client = session.client("eks")
         region = eks_client._client_config.region_name
@@ -247,7 +318,7 @@ def create_k8s_session(session, skip_checks=None):
             for cluster_name in cluster_names:
                 print(f"Scanning cluster: {cluster_name}")
                 #get token for the cluster
-                result = subprocess.run(f"aws eks get-token --cluster-name {cluster_name}", shell=True, capture_output=True, text=True)
+                result = subprocess.run(f"aws eks get-token --cluster-name {cluster_name} --profile {profile}", shell=True, capture_output=True, text=True)
                 token_data = json.loads(result.stdout)
                 token = token_data['status']['token']
 
@@ -286,77 +357,53 @@ def create_k8s_session(session, skip_checks=None):
                 results = []
                 scan_results = {}
                 
-                """
-                result_1 = scan.cis_2_1_1(cluster_data)
-                result_2 = scan.cis_2_1_2(kconfig, cluster_name, region)
-                result_3 = scan.cis_3_1_1(kconfig, cluster_name, region)
-                result_4 = scan.cis_3_1_2(kconfig, cluster_name, region)
-                result_5 = scan.cis_3_1_3(kconfig, cluster_name, region)
-                result_6 = scan.cis_3_1_4(kconfig, cluster_name, region)
-                result_7 = scan.cis_3_2_1(kconfig, cluster_name, region)
-                result_8 = scan.cis_3_2_2(kconfig, cluster_name, region)
-                result_9 = scan.cis_3_2_3(kconfig, cluster_name, region)
-                result_10 = scan.cis_3_2_4(kconfig, cluster_name, region)
-                result_11 = scan.cis_3_2_5(kconfig, cluster_name, region)
-                result_12 = scan.cis_3_2_6(kconfig, cluster_name, region)
-                result_13 = scan.cis_3_2_7(kconfig, cluster_name, region)
-                result_14 = scan.cis_3_2_8(kconfig, cluster_name, region)
-                result_15 = scan.cis_3_2_9(kconfig, cluster_name, region)
-                result_16 = scan.cis_4_1_1(kconfig, cluster_name)
-                result_17 = scan.cis_4_1_2(kconfig, cluster_name)
-                result_18 = scan.cis_4_1_3(kconfig, cluster_name)
-                result_19 = scan.cis_4_1_4(kconfig, cluster_name)
-                result_20 = scan.cis_4_1_5(kconfig, cluster_name)
-                result_21 = scan.cis_4_1_6(kconfig, cluster_name)   
-                result_22 = scan.cis_4_1_7(cluster_name, region)
-                result_23 = scan.cis_4_1_8(kconfig, cluster_name)
-                result_24 = scan.cis_4_2_1(kconfig, cluster_name)
-                result_25 = scan.cis_4_2_2(kconfig, cluster_name)
-                result_26 = scan.cis_4_2_3(kconfig, cluster_name)
-                result_27 = scan.cis_4_2_4(kconfig, cluster_name)
-                result_28 = scan.cis_4_2_5(kconfig, cluster_name)
-                result_29 = scan.cis_4_3_1(cluster_name, region)
-                result_30 = scan.cis_4_3_2(cluster_name, region)
-                result_31 = scan.cis_4_4_1(cluster_name, region)
-                result_32 = scan.cis_4_4_2(cluster_name)
-                result_33 = scan.cis_4_5_1(cluster_name, region)
-                result_34 = scan.cis_4_5_2(cluster_name, region)
-                """
                 scan_map = {
                 "2.1.1": lambda: scan.cis_2_1_1(cluster_data),
-                "2.1.2": lambda: scan.cis_2_1_2(kconfig, cluster_name, region),
-                "3.1.1": lambda: scan.cis_3_1_1(kconfig, cluster_name, region),
-                "3.1.2": lambda: scan.cis_3_1_2(kconfig, cluster_name, region),
-                "3.1.3": lambda: scan.cis_3_1_3(kconfig, cluster_name, region),
-                "3.1.4": lambda: scan.cis_3_1_4(kconfig, cluster_name, region),
-                "3.2.1": lambda: scan.cis_3_2_1(kconfig, cluster_name, region),
-                "3.2.2": lambda: scan.cis_3_2_2(kconfig, cluster_name, region),
-                "3.2.3": lambda: scan.cis_3_2_3(kconfig, cluster_name, region),
-                "3.2.4": lambda: scan.cis_3_2_4(kconfig, cluster_name, region),
-                "3.2.5": lambda: scan.cis_3_2_5(kconfig, cluster_name, region),
-                "3.2.6": lambda: scan.cis_3_2_6(kconfig, cluster_name, region),
-                "3.2.7": lambda: scan.cis_3_2_7(kconfig, cluster_name, region),
-                "3.2.8": lambda: scan.cis_3_2_8(kconfig, cluster_name, region),
-                "3.2.9": lambda: scan.cis_3_2_9(kconfig, cluster_name, region),
+                "2.1.2": lambda: scan.cis_2_1_2(kconfig, cluster_name, region, profile),
+                "3.1.1": lambda: scan.cis_3_1_1(kconfig, cluster_name, region, profile),
+                "3.1.2": lambda: scan.cis_3_1_2(kconfig, cluster_name, region, profile),
+                "3.1.3": lambda: scan.cis_3_1_3(kconfig, cluster_name, region, profile),
+                "3.1.4": lambda: scan.cis_3_1_4(kconfig, cluster_name, region, profile),
+                "3.2.1": lambda: scan.cis_3_2_1(kconfig, cluster_name, region, profile),
+                "3.2.2": lambda: scan.cis_3_2_2(kconfig, cluster_name, region, profile),
+                "3.2.3": lambda: scan.cis_3_2_3(kconfig, cluster_name, region, profile),
+                "3.2.4": lambda: scan.cis_3_2_4(kconfig, cluster_name, region, session),
+                "3.2.5": lambda: scan.cis_3_2_5(kconfig, cluster_name, region, profile),
+                "3.2.6": lambda: scan.cis_3_2_6(kconfig, cluster_name, region, profile),
+                "3.2.7": lambda: scan.cis_3_2_7(kconfig, cluster_name, region, session),
+                "3.2.8": lambda: scan.cis_3_2_8(kconfig, cluster_name, region, session),
+                "3.2.9": lambda: scan.cis_3_2_9(kconfig, cluster_name, region, profile),
                 "4.1.1": lambda: scan.cis_4_1_1(kconfig, cluster_name),
                 "4.1.2": lambda: scan.cis_4_1_2(kconfig, cluster_name),
                 "4.1.3": lambda: scan.cis_4_1_3(kconfig, cluster_name),
                 "4.1.4": lambda: scan.cis_4_1_4(kconfig, cluster_name),
                 "4.1.5": lambda: scan.cis_4_1_5(kconfig, cluster_name),
                 "4.1.6": lambda: scan.cis_4_1_6(kconfig, cluster_name),
-                "4.1.7": lambda: scan.cis_4_1_7(cluster_name, region),
+                "4.1.7": lambda: scan.cis_4_1_7(cluster_name, region, session),
                 "4.1.8": lambda: scan.cis_4_1_8(kconfig, cluster_name),
                 "4.2.1": lambda: scan.cis_4_2_1(kconfig, cluster_name),
                 "4.2.2": lambda: scan.cis_4_2_2(kconfig, cluster_name),
                 "4.2.3": lambda: scan.cis_4_2_3(kconfig, cluster_name),
                 "4.2.4": lambda: scan.cis_4_2_4(kconfig, cluster_name),
                 "4.2.5": lambda: scan.cis_4_2_5(kconfig, cluster_name),
-                "4.3.1": lambda: scan.cis_4_3_1(cluster_name, region),
-                "4.3.2": lambda: scan.cis_4_3_2(cluster_name, region),
-                "4.4.1": lambda: scan.cis_4_4_1(cluster_name, region),
+                "4.3.1": lambda: scan.cis_4_3_1(cluster_name, region, profile),
+                "4.3.2": lambda: scan.cis_4_3_2(cluster_name, region, profile),
+                "4.4.1": lambda: scan.cis_4_4_1(cluster_name, region, profile),
                 "4.4.2": lambda: scan.cis_4_4_2(cluster_name),
-                "4.5.1": lambda: scan.cis_4_5_1(cluster_name, region),
-                "4.5.2": lambda: scan.cis_4_5_2(cluster_name, region)
+                "4.5.1": lambda: scan.cis_4_5_1(cluster_name, region, profile),
+                "4.5.2": lambda: scan.cis_4_5_2(cluster_name, region, profile),
+                "5.1.1": lambda: scan.cis_5_1_1(session, cluster_name),
+                "5.1.2": lambda: scan.cis_5_1_2(session),
+                "5.1.3": lambda: scan.cis_5_1_3(session, cluster_name),
+                "5.1.4": lambda: scan.cis_5_1_4(kconfig, cluster_name),
+                "5.2.1": lambda: scan.cis_5_2_1(kconfig, cluster_name),
+                "5.3.1": lambda: scan.cis_5_3_1(session, cluster_name),
+                "5.4.1": lambda: scan.cis_5_4_1(session, cluster_name),
+                "5.4.2": lambda: scan.cis_5_4_2(session, cluster_name),
+                "5.4.3": lambda: scan.cis_5_4_3(session, cluster_name),
+                "5.4.4": lambda: scan.cis_5_4_4(session, cluster_name),
+                "5.4.5": lambda: scan.cis_5_4_5(kconfig, cluster_name),
+                "5.5.1": lambda: scan.cis_5_5_1(kconfig, cluster_name)
                 }
 
                 for check in checks:
@@ -375,189 +422,61 @@ def create_k8s_session(session, skip_checks=None):
                 report_generator.generate_pdf_report(results, report_filename, cluster_name, include_compliant=True)
 
                 remediation_map = {
-                "2.1.1": lambda result: remediation.remediate_cis_2_1_1(cluster_name, region) if not result['compliant'] else None,
-                "3.1.1": lambda result: remediation.remediate_cis_3_1_1(cluster_name, region, result['details']) if not result['compliant'] else None,
-                "3.1.2": lambda result: remediation.remediate_cis_3_1_2(cluster_name, region, result['details']) if not result['compliant'] else None,
-                "3.1.3": lambda result: remediation.remediate_cis_3_1_3(cluster_name, region, result['details']) if not result['compliant'] else None,
-                "3.1.4": lambda result: remediation.remediate_cis_3_1_4(cluster_name, region, result['details']) if not result['compliant'] else None,
-                "3.2.1": lambda result: remediation.remediate_cis_3_2_1(region, result['details']) if not result['compliant'] else None,
-                "3.2.2": lambda result: remediation.remediate_cis_3_2_2(region, result['details']) if not result['compliant'] else None,
-                "3.2.3": lambda result: remediation.remediate_cis_3_2_3(region, result['details']) if not result['compliant'] else None,
-                "3.2.4": lambda result: remediation.remediate_cis_3_2_4(region, result['details']) if not result['compliant'] else None,
-                "3.2.5": lambda result: remediation.remediate_cis_3_2_5(region, result['details']) if not result['compliant'] else None,
-                "3.2.6": lambda result: remediation.remediate_cis_3_2_6(region, result['details']) if not result['compliant'] else None,
-                "3.2.7": lambda result: remediation.remediate_cis_3_2_7(region, result['details']) if not result['compliant'] else None,
-                "3.2.8": lambda result: remediation.remediate_cis_3_2_8(region, result['details']) if not result['compliant'] else None,
-                "3.2.9": lambda result: remediation.remediate_cis_3_2_9(region, result['details']) if not result['compliant'] else None,
-                "4.1.1": lambda result: remediation.remediate_cis_4_1_1(result['details'], enable_fix=False) if not result['compliant'] else None,
-                "4.1.5": lambda result: remediation.remediate_cis_4_1_5(enable_fix=False) if not result['compliant'] else None,
-                "4.2.1": lambda result: remediation.remediate_cis_4_2_x(cluster_name, result['details'], enable_fix=False) if not result['compliant'] else None,
-                "4.3.2": lambda result: remediation.remediate_cis_4_3_2(cluster_name, region, result['details'], enable_fix=False) if not result['compliant'] else None,
+                "2.1.1": lambda result: remediation.remediate_cis_2_1_1(eks_client, cluster_name) if not result['compliant'] else None,
+                "3.1.1": lambda result: remediation.remediate_cis_3_1_1(cluster_name, region, result['details'], profile) if not result['compliant'] else None,
+                "3.1.2": lambda result: remediation.remediate_cis_3_1_2(cluster_name, region, result['details'], profile) if not result['compliant'] else None,
+                "3.1.3": lambda result: remediation.remediate_cis_3_1_3(cluster_name, region, result['details'], profile) if not result['compliant'] else None,
+                "3.1.4": lambda result: remediation.remediate_cis_3_1_4(cluster_name, region, result['details'], profile) if not result['compliant'] else None,
+                "3.2.1": lambda result: remediation.remediate_cis_3_2_1(region, result['details'], session) if not result['compliant'] else None,
+                "3.2.2": lambda result: remediation.remediate_cis_3_2_2(region, result['details'], session) if not result['compliant'] else None,
+                "3.2.3": lambda result: remediation.remediate_cis_3_2_3(region, result['details'], session) if not result['compliant'] else None,
+                "3.2.4": lambda result: remediation.remediate_cis_3_2_4(region, result['details'], session) if not result['compliant'] else None,
+                "3.2.5": lambda result: remediation.remediate_cis_3_2_5(region, result['details'], session) if not result['compliant'] else None,
+                "3.2.6": lambda result: remediation.remediate_cis_3_2_6(region, result['details'], session) if not result['compliant'] else None,
+                "3.2.7": lambda result: remediation.remediate_cis_3_2_7(region, result['details'], session) if not result['compliant'] else None,
+                "3.2.8": lambda result: remediation.remediate_cis_3_2_8(region, result['details'], session) if not result['compliant'] else None,
+                "3.2.9": lambda result: remediation.remediate_cis_3_2_9(region, result['details'], session) if not result['compliant'] else None,
+                "4.1.1": lambda result: remediation.remediate_cis_4_1_1(result['details'], enable_fix=("4.1.1" in enable_fix_ids)) if not result['compliant'] else None,
+                "4.1.2": lambda result: remediation.remediate_cis_4_1_2(cluster_name) if not result['compliant'] else None,
+                "4.1.3": lambda result: remediation.remediate_cis_4_1_3(cluster_name) if not result['compliant'] else None,
+                "4.1.4": lambda result: remediation.remediate_cis_4_1_4(cluster_name) if not result['compliant'] else None,
+                "4.1.5": lambda result: remediation.remediate_cis_4_1_5(enable_fix=("4.1.5" in enable_fix_ids)) if not result['compliant'] else None,
+                "4.1.6": lambda result: remediation.remediate_cis_4_1_6(cluster_name) if not result['compliant'] else None,
+                "4.1.7": lambda result: remediation.remediate_cis_4_1_7(cluster_name) if not result['compliant'] else None,
+                "4.1.8": lambda result: remediation.remediate_cis_4_1_8(cluster_name) if not result['compliant'] else None,
+                "4.2.1": lambda result: remediation.remediate_cis_4_2_x(cluster_name, result['details'], enable_fix=("4.2.1" in enable_fix_ids)) if not result['compliant'] else None,
+                "4.3.1": lambda result: remediation.remediate_cis_4_3_1(cluster_name, region, profile) if not result['compliant'] else None,
+                "4.3.2": lambda result: remediation.remediate_cis_4_3_2(cluster_name, region, result['details'], profile, enable_fix=("4.3.2" in enable_fix_ids)) if not result['compliant'] else None,
                 "4.4.1": lambda result: remediation.remediate_cis_4_4_1(cluster_name) if not result['compliant'] else None,
                 "4.5.1": lambda result: remediation.remediate_cis_4_5_1(cluster_name) if not result['compliant'] else None,
-                "4.5.2": lambda result: remediation.remediate_cis_4_5_2(cluster_name, region, result['details'], enable_fix=False) if not result['compliant'] else None
+                "4.5.2": lambda result: remediation.remediate_cis_4_5_2(cluster_name, region, result['details'], profile, enable_fix=("4.5.2" in enable_fix_ids)) if not result['compliant'] else None,
+                "5.1.1": lambda result: remediation.remediate_5_1_1(session, result['details']) if not result['compliant'] else None,
+                "5.1.2": lambda result: remediation.remediate_cis_5_1_2(cluster_name) if not result['compliant'] else None,
+                "5.1.3": lambda result: remediation.remediate_cis_5_1_3(cluster_name) if not result['compliant'] else None,
+                "5.1.4": lambda result: remediation.remediate_cis_5_1_4(cluster_name) if not result['compliant'] else None,
+                "5.2.1": lambda result: remediation.remediate_5_2_1(kconfig, result['details'], enable_fix=("5.2.1" in enable_fix_ids)) if not result['compliant'] else None,
+                "5.3.1": lambda result: remediation.remediate_cis_5_3_1(cluster_name) if not result['compliant'] else None,
+                "5.4.1": lambda result: remediation.remediate_5_4_1(session, cluster_name, enable_fix=("5.4.1" in enable_fix_ids)) if not result['compliant'] else None,
+                "5.4.2": lambda result: remediation.remediate_5_4_2(session, cluster_name, my_ip_cidr="", enable_fix=("5.4.2" in enable_fix_ids)) if not result['compliant'] else None,
+                "5.4.3": lambda result: remediation.remediate_5_4_3(session, cluster_name, my_ip_cidr="", enable_fix=("5.4.3" in enable_fix_ids)) if not result['compliant'] else None,
+                "5.4.4": lambda result: remediation.remediate_5_4_4(session, cluster_name) if not result['compliant'] else None,
+                "5.4.5": lambda result: remediation.remediate_cis_5_4_5(cluster_name) if not result['compliant'] else None,
+                "5.5.1": lambda result: remediation.remediate_cis_5_5_1(cluster_name) if not result['compliant'] else None
                 }
 
                 for check_id, remediate_func in remediation_map.items():
                     if check_id not in skip_check_ids and check_id in scan_results:
                         result = remediate_func(scan_results[check_id])
-                        if result:
+                        if result is True:
                             print(f"CIS {check_id} remediated for cluster {cluster_name}")
-                        elif result is not None:  
+                        elif isinstance(result, str):
+                            print(f"CIS {check_id} remediated for cluster {cluster_name}: {result}")
+                        elif result is False:
                             print(f"Failed to remediate CIS {check_id} for cluster {cluster_name}")
-
-                """
-
-                if result_1['compliant'] == False:
-                    result=remediation.remediate_cis_2_1_1(cluster_name, region)
-                    if result:
-                        print(f"CIS 2.1.1 remediated for cluster {cluster_name}")
-                    else:
-                        print(f"Failed to remediate CIS 2.1.1 for cluster {cluster_name}")
-                
-                if result_3['compliant'] == False:
-                    result = remediation.remediate_cis_3_1_1(cluster_name, region, result_3['details'])
-                    if result:
-                        print(f"CIS 3.1.1 remediated for cluster {cluster_name}")
-                    else:
-                        print(f"Failed to remediate CIS 3.1.1 for cluster {cluster_name}")
-
-                if result_4['compliant'] == False:
-                    result = remediation.remediate_cis_3_1_2(cluster_name, region, result_4['details'])
-                    if result:
-                        print(f"CIS 3.1.2 remediated for cluster {cluster_name}")
-                    else:
-                        print(f"Failed to remediate CIS 3.1.2 for cluster {cluster_name}")
-
-                if result_5['compliant'] == False:
-                    result = remediation.remediate_cis_3_1_3(cluster_name, region, result_5['details'])
-                    if result:
-                        print(f"CIS 3.1.3 remediated for cluster {cluster_name}")
-                    else:
-                        print(f"Failed to remediate CIS 3.1.3 for cluster {cluster_name}")
-
-                if result_6['compliant'] == False:
-                    result = remediation.remediate_cis_3_1_4(cluster_name, region, result_6['details'])
-                    if result:
-                        print(f"CIS 3.1.4 remediated for cluster {cluster_name}")
-                    else:
-                        print(f"Failed to remediate CIS 3.1.4 for cluster {cluster_name}")
-
-                if result_7['compliant'] == False:
-                    result = remediation.remediate_cis_3_2_1(region, result_7['details'])
-                    if result:
-                        print(f"CIS 3.2.1 remediated for cluster {cluster_name}")
-                    else:
-                        print(f"Failed to remediate CIS 3.2.1 for cluster {cluster_name}")
-
-                if result_8['compliant'] == False:
-                    result = remediation.remediate_cis_3_2_2(region, result_8['details'])
-                    if result:
-                        print(f"CIS 3.2.2 remediated for cluster {cluster_name}")
-                    else:
-                        print(f"Failed to remediate CIS 3.2.2 for cluster {cluster_name}")
-
-                if result_9['compliant'] == False:
-                    result = remediation.remediate_cis_3_2_3(region, result_9['details'])
-                    if result:
-                        print(f"CIS 3.2.3 remediated for cluster {cluster_name}")
-                    else:
-                        print(f"Failed to remediate CIS 3.2.3 for cluster {cluster_name}")
-
-                if result_10['compliant'] == False:
-                    result = remediation.remediate_cis_3_2_4(region, result_10['details'])
-                    if result:
-                        print(f"CIS 3.2.4 remediated for cluster {cluster_name}")
-                    else:
-                        print(f"Failed to remediate CIS 3.2.4 for cluster {cluster_name}")
-
-                if result_11['compliant'] == False:
-                    result = remediation.remediate_cis_3_2_5(region, result_11['details'])
-                    if result:
-                        print(f"CIS 3.2.5 remediated for cluster {cluster_name}")
-                    else:
-                        print(f"Failed to remediate CIS 3.2.5 for cluster {cluster_name}")
-
-                if result_12['compliant'] == False:
-                    result = remediation.remediate_cis_3_2_6(region, result_12['details'])
-                    if result:
-                        print(f"CIS 3.2.6 remediated for cluster {cluster_name}")
-                    else:
-                        print(f"Failed to remediate CIS 3.2.6 for cluster {cluster_name}")
-
-                if result_13['compliant'] == False:
-                    result = remediation.remediate_cis_3_2_7(region, result_13['details'])
-                    if result:
-                        print(f"CIS 3.2.7 remediated for cluster {cluster_name}")
-                    else:
-                        print(f"Failed to remediate CIS 3.2.7 for cluster {cluster_name}")
-
-                if result_14['compliant'] == False:
-                    result = remediation.remediate_cis_3_2_8(region, result_14['details'])
-                    if result:
-                        print(f"CIS 3.2.8 remediated for cluster {cluster_name}")
-                    else:
-                        print(f"Failed to remediate CIS 3.2.8 for cluster {cluster_name}")
-
-                if result_15['compliant'] == False:
-                    result = remediation.remediate_cis_3_2_9(region, result_15['details'])
-                    if result:
-                        print(f"CIS 3.2.9 remediated for cluster {cluster_name}")
-                    else:
-                        print(f"Failed to remediate CIS 3.2.9 for cluster {cluster_name}")
-
-                if result_16['compliant'] == False:
-                    result = remediation.remediate_cis_4_1_1(result_16['details'], enable_fix=False)
-                    if result:
-                        print(f"CIS 4.1.1 remediated for cluster {cluster_name}")
-                    else:
-                        print(f"Failed to remediate CIS 4.1.1 for cluster {cluster_name}")
-
-                if result_20['compliant'] == False:
-                    result = remediation.remediate_cis_4_1_5(enable_fix=False)
-                    if result:
-                        print(f"CIS 4.1.5 remediated for cluster {cluster_name}")
-                    else:
-                        print(f"Failed to remediate CIS 4.1.5 for cluster {cluster_name}")
-
-                if result_24['compliant'] == False:
-                    result = remediation.remediate_cis_4_2_x(cluster_name, result_24['details'], enable_fix=False)
-                    if result:
-                        print(f"CIS 4.2.1 remediated for cluster {cluster_name}")
-                    else:
-                        print(f"Failed to remediate CIS 4.2.1 for cluster {cluster_name}")
-
-                if result_30['compliant'] == False:
-                    result = remediation.remediate_cis_4_3_2(cluster_name, region, result_30['details'], enable_fix=False)
-                    if result:
-                        print(f"CIS 4.3.2 remediated for cluster {cluster_name}")
-                    else:
-                        print(f"Failed to remediate CIS 4.3.2 for cluster {cluster_name}")
-
-                if result_31['compliant'] == False:
-                    result = remediation.remediate_cis_4_4_1(cluster_name)
-                    if result:
-                        print(f"CIS 4.4.1 remediated for cluster {cluster_name}")
-                    else:
-                        print(f"Failed to remediate CIS 4.4.1 for cluster {cluster_name}")  
-
-                if result_33['compliant'] == False:
-                    result = remediation.remediate_cis_4_5_1(cluster_name)
-                    if result:
-                        print(f"CIS 4.5.1 remediated for cluster {cluster_name}")
-                    else:
-                        print(f"Failed to remediate CIS 4.5.1 for cluster {cluster_name}")
-
-                if result_34['compliant'] == False:
-                    result = remediation.remediate_cis_4_5_2(cluster_name, region, result_34['details'], enable_fix=False)
-                    if result:
-                        print(f"CIS 4.5.2 remediated for cluster {cluster_name}")
-                    else:
-                        print(f"Failed to remediate CIS 4.5.2 for cluster {cluster_name}")
-                """
         
     except Exception as e:
         print(f"Error creating Kubernetes session: {e}")
+        print(f"Full traceback: {traceback.format_exc()}")
     
 def main():
     parser = argparse.ArgumentParser(description='AWS Configuration Tool')
@@ -583,12 +502,8 @@ def main():
             session = create_aws_session(profile)
             if session:
                 skip_checks = load_skip_config()
-                create_k8s_session(session, skip_checks=skip_checks)
+                enable_fix_ids = load_enable_fix_config()
+                create_k8s_session(session, profile, skip_checks=skip_checks, enable_fix_ids=enable_fix_ids) 
 
-    elif args.custom:
-        skip_checks = select_checks_to_skip()
-        save_skip_config(skip_checks)
-        print("Configuration complete.")
-        return
 if __name__ == '__main__':
     main()

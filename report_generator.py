@@ -195,6 +195,66 @@ CHECK_DESCRIPTIONS = {
         "title": "The default namespace should not be used",
         "description": "The default namespace should not be used",
         "remediation": "Configure workloads to use dedicated namespaces instead of the default namespace."
+    },
+    "5.1.1": {
+        "title": "Ensure Image Vulnerability Scanning using Amazon ECR image scanning or a third party provider",
+        "description": "Enable image scanning to identify known vulnerabilities in container images.",
+        "remediation": "Configure Amazon ECR or a third-party tool to perform automated image scanning before deployment."
+    },
+    "5.1.2": {
+        "title": "Minimize user access to Amazon ECR",
+        "description": "Reduce user-level access to ECR to avoid accidental or malicious modification of images.",
+        "remediation": "Use IAM policies to restrict ECR access to only necessary users."
+    },
+    "5.1.3": {
+        "title": "Minimize cluster access to read-only for Amazon ECR",
+        "description": "Avoid granting excessive permissions to the cluster for accessing ECR registries.",
+        "remediation": "Use read-only permissions when allowing clusters to pull images from ECR."
+    },
+    "5.1.4": {
+        "title": "Minimize Container Registries to only those approved",
+        "description": "Use only approved container registries to avoid introducing unverified or malicious images.",
+        "remediation": "Audit container registry usage and restrict deployments to allowlisted registries."
+    },
+    "5.2.1": {
+        "title": "Prefer using dedicated EKS Service Accounts",
+        "description": "Avoid using the default service account and assign IAM roles to specific workloads.",
+        "remediation": "Create dedicated Kubernetes service accounts and associate IAM roles using IRSA."
+    },
+    "5.3.1": {
+        "title": "Ensure Kubernetes Secrets are encrypted using Customer Master Keys (CMKs) managed in AWS KMS",
+        "description": "Ensure secrets stored in etcd are encrypted using CMKs instead of the default encryption method.",
+        "remediation": "Configure the EKS cluster to enable envelope encryption using KMS CMKs."
+    },
+    "5.4.1": {
+        "title": "Restrict Access to the Control Plane Endpoint",
+        "description": "Limit the accessibility of the Kubernetes API server to trusted IP ranges only.",
+        "remediation": "Use endpoint access control settings in EKS to restrict API server access."
+    },
+    "5.4.2": {
+        "title": "Ensure clusters are created with Private Endpoint Enabled and Public Access Disabled",
+        "description": "Use private-only access to the control plane to reduce the attack surface.",
+        "remediation": "Configure EKS clusters to disable public endpoint access and enable private access during creation."
+    },
+    "5.4.3": {
+        "title": "Ensure clusters are created with Private Nodes",
+        "description": "Run nodes in private subnets to prevent direct access from the internet.",
+        "remediation": "Provision worker nodes in private subnets and ensure proper NAT gateway setup."
+    },
+    "5.4.4": {
+        "title": "Ensure Network Policy is Enabled and set as appropriate",
+        "description": "Network Policies help enforce segmentation and restrict traffic flow between pods.",
+        "remediation": "Enable network policy enforcement and define appropriate ingress/egress rules."
+    },
+    "5.4.5": {
+        "title": "Encrypt traffic to HTTPS load balancers with TLS certificates",
+        "description": "Use TLS encryption for any data transmitted through load balancers.",
+        "remediation": "Ensure HTTPS listeners are used with valid TLS certificates for all load-balanced services."
+    },
+    "5.5.1": {
+        "title": "Manage Kubernetes RBAC users with AWS IAM Authenticator for Kubernetes or Upgrade to AWS CLI v1.16.156 or greater",
+        "description": "Use AWS IAM roles for authenticating users to the cluster via IAM Authenticator.",
+        "remediation": "Integrate RBAC with AWS IAM and ensure the CLI version supports this integration."
     }
 
 }

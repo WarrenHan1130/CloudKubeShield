@@ -7,6 +7,7 @@ import requests
 import os
 import boto3
 import concurrent.futures
+import fnmatch
 
 def check_wildcards_in_role(role, role_type, namespace=None):
     """Check for wildcard usage in Role or ClusterRole"""
@@ -128,20 +129,20 @@ def cis_2_1_1(cluster_data):
     return result
 
 # CIS 2.1.2 Ensure audit logs are collected and managed
-def cis_2_1_2(kube_config, cluster_name, region):
+def cis_2_1_2(kube_config, cluster_name, region, profile):
 
     result = {
         'check_id': "2.1.2",
         'title': "Ensure audit logs are collected and managed",
         'resource_id': cluster_name,
-        'compliant': False,
+        'compliant': True,
         'details': []
     }
 
     non_compliant_nodes = []
     # Update kubeconfig for the kubeclt
     subprocess.run(
-        f"aws eks update-kubeconfig --name {cluster_name} --region {region}",
+        f"aws eks update-kubeconfig --name {cluster_name} --region {region} --profile {profile}",
         shell=True, check=True
     )
 
@@ -188,19 +189,19 @@ def cis_2_1_2(kube_config, cluster_name, region):
         result['details'] = non_compliant_nodes
     else:
         result['compliant'] = True
-        result['details'] = {"message": "All audit logs are collected and managed, no non-compliant items"}
+        result['details'].append({"message": "All audit logs are collected and managed, no non-compliant items"})
     
     print("CIS 2.1.2 Scan Completed")
     return result
 
 # CIS 3.1.1 Ensure that the kubeconfig file permissions are set to 644 or more restrictive.
-def cis_3_1_1(kube_config, cluster_name, region):
+def cis_3_1_1(kube_config, cluster_name, region, profile):
     
     result = {
         'check_id': "3.1.1",
         'title': "Ensure that the kubeconfig file permissions are set to 644 or more restrictive.",
         'resource_id': cluster_name,
-        'compliant': False,
+        'compliant': True,
         'details': {}
     }
      
@@ -214,7 +215,7 @@ def cis_3_1_1(kube_config, cluster_name, region):
         temp_file_path = None
         try:
             subprocess.run(
-            f"aws eks update-kubeconfig --name {cluster_name} --region {region}",
+            f"aws eks update-kubeconfig --name {cluster_name} --region {region} --profile {profile}",
             shell=True, check=True)
             
             pod_yaml = (
@@ -289,9 +290,9 @@ def cis_3_1_1(kube_config, cluster_name, region):
                 non_compliant_files[node_name] = node_non_compliant_files
         
         except Exception as e:
-            result['compliant'] = False
+            result['compliant'] = True
             result['details'][node_name] = str(e)
-            print(f"Error checking node {node_name}: {str(e)}")
+            print(f"Error performing CIS 3.1.1 scan: {str(e)}")
             continue
         finally:
             # 4. Clean up temporary files, remove Pod
@@ -310,19 +311,20 @@ def cis_3_1_1(kube_config, cluster_name, region):
         result['details'] = non_compliant_files
     else:
         result['compliant'] = True
-        result['details'] = {"message": "All kubeconfig files have 644 or more restrictive permissions, no non-compliant items"}
+        if not result['details']:
+            result['details'] = {"message": "All kubeconfig files have 644 or more restrictive permissions, no non-compliant items"}
     
     print("CIS 3.1.1 Scan Completed")
     return result
 
 # 3.1.2 Ensure that the kubelet kubeconfig file ownership is set to root:root
-def cis_3_1_2(kube_config, cluster_name, region):
+def cis_3_1_2(kube_config, cluster_name, region, profile):
 
     result = {
         'check_id': "3.1.2",
         'title': "Ensure that the kubelet kubeconfig file ownership is set to root:root",
         'resource_id': cluster_name,
-        'compliant': False,
+        'compliant': True,
         'details': {}
     }
 
@@ -336,7 +338,7 @@ def cis_3_1_2(kube_config, cluster_name, region):
         temp_file_path = None
         try:
             subprocess.run(
-            f"aws eks update-kubeconfig --name {cluster_name} --region {region}",
+            f"aws eks update-kubeconfig --name {cluster_name} --region {region} --profile {profile}",
             shell=True, check=True)
             
             pod_yaml = (
@@ -416,7 +418,9 @@ def cis_3_1_2(kube_config, cluster_name, region):
                 non_compliant_files[node_name] = node_non_compliant_files
         
         except Exception as e:
-            print(f"Error checking node {node_name}: {str(e)}")
+            result['compliant'] = True
+            result['details'][node_name] = str(e)
+            print(f"Error performing CIS 3.1.2 scan: {str(e)}")
             continue
         finally:
             # 4. Clean up temporary files, remove Pod
@@ -433,21 +437,22 @@ def cis_3_1_2(kube_config, cluster_name, region):
     if non_compliant_files:
             result['compliant'] = False
             result['details'] = non_compliant_files
-    else:
-            result['compliant'] = True
+    else:   
+        result['compliant'] = True
+        if not result['details']:
             result['details'] = {"message": "All kubelet kubeconfig files have root:root ownership, no non-compliant items"}
 
     print("CIS 3.1.2 Scan Completed")
     return result
 
 # 3.1.3 Ensure that the kubelet kubeconfig file permissions are set to 644 or more restrictive
-def cis_3_1_3(kube_config, cluster_name, region):
+def cis_3_1_3(kube_config, cluster_name, region, profile):
 
     result = {
         'check_id': "3.1.3",
         'title': "Ensure that the kubelet kubeconfig file permissions are set to 644 or more restrictive",
         'resource_id': cluster_name,
-        'compliant': False,
+        'compliant': True,
         'details': {}
     }
 
@@ -461,7 +466,7 @@ def cis_3_1_3(kube_config, cluster_name, region):
         temp_file_path = None
         try:
             subprocess.run(
-            f"aws eks update-kubeconfig --name {cluster_name} --region {region}",
+            f"aws eks update-kubeconfig --name {cluster_name} --region {region} --profile {profile}",
             shell=True, check=True)
             
             pod_yaml = (
@@ -540,7 +545,9 @@ def cis_3_1_3(kube_config, cluster_name, region):
                 non_compliant_files[node_name] = node_non_compliant_files
         
         except Exception as e:
-            print(f"Error checking node {node_name}: {str(e)}")
+            result['compliant'] = True
+            result['details'][node_name] = str(e)
+            print(f"Error performing CIS 3.1.3 scan: {str(e)}")
             continue
         finally:
             # 4. Clean up temporary files, remove Pod
@@ -559,19 +566,20 @@ def cis_3_1_3(kube_config, cluster_name, region):
             result['details'] = non_compliant_files
     else:
             result['compliant'] = True
-            result['details'] = {"message": "All kubelet kubeconfig files have 644 or more restrictive permissions, no non-compliant items"}
+            if not result['details']:
+                result['details'] = {"message": "All kubelet kubeconfig files have 644 or more restrictive permissions, no non-compliant items"}
 
     print("CIS 3.1.3 Scan Completed")
     return result
 
 # 3.1.4 Ensure that the kubelet config file permissions are set to 644 or more restrictive
-def cis_3_1_4(kube_config, cluster_name, region):
+def cis_3_1_4(kube_config, cluster_name, region, profile):
 
     result = {
         'check_id': "3.1.4",
         'title': "Ensure that the kubelet config file permissions are set to 644 or more restrictive",
         'resource_id': cluster_name,
-        'compliant': False,
+        'compliant': True,
         'details': {}
     }
 
@@ -585,7 +593,7 @@ def cis_3_1_4(kube_config, cluster_name, region):
         temp_file_path = None
         try:
             subprocess.run(
-            f"aws eks update-kubeconfig --name {cluster_name} --region {region}",
+            f"aws eks update-kubeconfig --name {cluster_name} --region {region} --profile {profile}",
             shell=True, check=True)
             
             pod_yaml = (
@@ -665,7 +673,9 @@ def cis_3_1_4(kube_config, cluster_name, region):
                 non_compliant_files[node_name] = node_non_compliant_files
         
         except Exception as e:
-            print(f"Error checking node {node_name}: {str(e)}")
+            result['compliant'] = True
+            result['details'][node_name] = str(e)
+            print(f"Error performing CIS 3.1.4 scan: {str(e)}")
             continue
             
         finally:
@@ -685,26 +695,27 @@ def cis_3_1_4(kube_config, cluster_name, region):
             result['details'] = non_compliant_files
     else:
             result['compliant'] = True
-            result['details'] = {"message": "All kubelet kubeconfig files have 644 or more restrictive permissions, no non-compliant items"}
+            if not result['details']:
+                result['details'] = {"message": "All kubelet kubeconfig files have 644 or more restrictive permissions, no non-compliant items"}
 
     print("CIS 3.1.4 Scan Completed")
     return result
 
 # 3.2.1 Ensure that the Anonymous Auth is Not Enabled
-def cis_3_2_1(kube_config, cluster_name, region):
+def cis_3_2_1(kube_config, cluster_name, region, profile):
     result = {
         'check_id': "3.2.1",
         'title': "Ensure that the Anonymous Auth is Not Enabled",
         'resource_id': cluster_name,
-        'compliant': False,
-        'details': []
+        'compliant': True,
+        'details': {}
     }
 
     kclient = kubernetes.client.ApiClient(configuration=kube_config)
     api = kubernetes.client.CoreV1Api(api_client=kclient)
     
     subprocess.run(
-        f"aws eks update-kubeconfig --name {cluster_name} --region {region}",
+        f"aws eks update-kubeconfig --name {cluster_name} --region {region} --profile {profile}",
         shell=True, check=True
     )
 
@@ -738,7 +749,9 @@ def cis_3_2_1(kube_config, cluster_name, region):
                             non_compliant_nodes[node_name] = False
 
                 except Exception as e:
-                    print(f"Error checking node {node_name}: {str(e)}")
+                    result['compliant'] = True
+                    result['details'][node_name] = str(e)
+                    print(f"Error performing CIS 3.2.1 scan: {str(e)}")
 
     finally:
         if proxy_process.poll() is None:
@@ -750,26 +763,27 @@ def cis_3_2_1(kube_config, cluster_name, region):
         result['details'] = non_compliant_nodes
     else:
         result['compliant'] = True
-        result['details'] = {"message": "Anonymous Auth is not enabled"}
+        if not result['details']:
+            result['details'] = {"message": "Anonymous Auth is not enabled"}
 
     print("CIS 3.2.1 Scan Completed")
     return result
 
 # 3.2.2 Ensure that the --authorization-mode argument is not set to AlwaysAllow
-def cis_3_2_2(kube_config, cluster_name, region):
+def cis_3_2_2(kube_config, cluster_name, region, profile):
     result = {
         'check_id': "3.2.2",
         'title': "Ensure that the --authorization-mode argument is not set to AlwaysAllow",
         'resource_id': cluster_name,
-        'compliant': False,
-        'details': []
+        'compliant': True,
+        'details': {}
     }
 
     kclient = kubernetes.client.ApiClient(configuration=kube_config)
     api = kubernetes.client.CoreV1Api(api_client=kclient)
     
     subprocess.run(
-        f"aws eks update-kubeconfig --name {cluster_name} --region {region}",
+        f"aws eks update-kubeconfig --name {cluster_name} --region {region} --profile {profile}",
         shell=True, check=True)
 
     proxy_port = 8080
@@ -808,7 +822,9 @@ def cis_3_2_2(kube_config, cluster_name, region):
                             }
 
                 except Exception as e:
-                    print(f"Error checking node {node_name}: {str(e)}")
+                    result['compliant'] = True
+                    result['details'][node_name] = str(e)
+                    print(f"Error performing CIS 3.2.2 scan: {str(e)}")
                     
     finally:
         if proxy_process.poll() is None:
@@ -820,26 +836,27 @@ def cis_3_2_2(kube_config, cluster_name, region):
         result['details'] = non_compliant_nodes
     else:
         result['compliant'] = True
-        result['details'] = {"message": "Authorization mode is set to Webhook and authentication webhook is enabled"}
+        if not result['details']:
+            result['details'] = {"message": "Authorization mode is set to Webhook and authentication webhook is enabled"}
 
     print("CIS 3.2.2 Scan Completed")
     return result
 
 # 3.2.3 Ensure that a Client CA File is Configured
-def cis_3_2_3(kube_config, cluster_name, region):
+def cis_3_2_3(kube_config, cluster_name, region, profile):
     result = {
         'check_id': "3.2.3",
         'title': "Ensure that a Client CA File is Configured",
         'resource_id': cluster_name,
-        'compliant': False,
-        'details': []
+        'compliant': True,
+        'details': {}
     }
 
     kclient = kubernetes.client.ApiClient(configuration=kube_config)
     api = kubernetes.client.CoreV1Api(api_client=kclient)
     
     subprocess.run(
-        f"aws eks update-kubeconfig --name {cluster_name} --region {region}",
+        f"aws eks update-kubeconfig --name {cluster_name} --region {region} --profile {profile}",
         shell=True, check=True
     )
 
@@ -875,7 +892,9 @@ def cis_3_2_3(kube_config, cluster_name, region):
                     else:
                         non_compliant_nodes[node_name] = True
                 except Exception as e:
-                    print(f"Error checking node {node_name}: {str(e)}")
+                    result['compliant'] = True
+                    result['details'][node_name] = str(e)
+                    print(f"Error performing CIS 3.2.3 scan: {str(e)}")
 
     finally:
         if proxy_process.poll() is None:
@@ -887,24 +906,25 @@ def cis_3_2_3(kube_config, cluster_name, region):
         result['details'] = non_compliant_nodes
     else:
         result['compliant'] = True
-        result['details'] = {"message": "Client CA File is configured"}
+        if not result['details']:
+            result['details'] = {"message": "Client CA File is configured"}
 
     print("CIS 3.2.3 Scan Completed")
     return result
 
 # 3.2.4 Ensure that the --read-only-port is disabled
-def cis_3_2_4(kube_config, cluster_name, region):
+def cis_3_2_4(kube_config, cluster_name, region, session):
 
     result = {
         'check_id': "3.2.4",
         'title': "Ensure that the --read-only-port is disabled",
         'resource_id': cluster_name,
-        'compliant': False,
+        'compliant': True,
         'details': {}
     }
 
-    ec2 = boto3.client('ec2', region_name=region)
-    ssm = boto3.client('ssm', region_name=region)
+    ec2 = session.client('ec2', region_name=region)
+    ssm = session.client('ssm', region_name=region)
     kclient = kubernetes.client.ApiClient(configuration=kube_config)
     api = kubernetes.client.CoreV1Api(api_client=kclient)
 
@@ -926,7 +946,9 @@ def cis_3_2_4(kube_config, cluster_name, region):
                 print(f"Instance {node_name} is not managed by SSM")
                 continue
         except (IndexError, KeyError):
-            print(f"Failed to find instance ID for node name '{node_name}'")
+            result['compliant'] = True
+            result['details'][node_name] = "Failed to find instance ID for node name"
+            print("Error performing CIS 3.2.4 scan.")
             continue
 
         # Step 2: Execute ps command to find kubelet config path
@@ -985,17 +1007,18 @@ def cis_3_2_4(kube_config, cluster_name, region):
         result['details'] = non_compliant_nodes
     else:
         result['compliant'] = True
-        result['details'] = {"message": "Read only port is disabled"}
+        if not result['details']:
+            result['details'] = {"message": "Read only port is disabled"}
     print("CIS 3.2.4 Scan Completed")
     return result
 
 # 3.2.5 Ensure that the --streaming-connection-idle-timeout argument is not set to 0
-def cis_3_2_5(kube_config, cluster_name, region):
+def cis_3_2_5(kube_config, cluster_name, region, profile):
     result = {
         'check_id': "3.2.5",
         'title': "Ensure that the streamingConnectionIdleTimeout argument is not set to 0",
         'resource_id': cluster_name,
-        'compliant': False,
+        'compliant': True,
         'details': {}
     }
 
@@ -1003,7 +1026,7 @@ def cis_3_2_5(kube_config, cluster_name, region):
     api = kubernetes.client.CoreV1Api(api_client=kclient)
 
     subprocess.run(
-        f"aws eks update-kubeconfig --name {cluster_name} --region {region}",
+        f"aws eks update-kubeconfig --name {cluster_name} --region {region} --profile {profile}",
         shell=True, check=True
     )
 
@@ -1035,7 +1058,9 @@ def cis_3_2_5(kube_config, cluster_name, region):
                             non_compliant_nodes[node_name] = False
 
                 except Exception as e:
-                    print(f"Error checking node {node_name}: {str(e)}")
+                    result['compliant'] = True
+                    result['details'][node_name] = str(e)
+                    print(f"Error performing CIS 3.2.5 scan: {str(e)}")
     finally:
         if proxy_process.poll() is None:
             proxy_process.terminate()
@@ -1046,18 +1071,19 @@ def cis_3_2_5(kube_config, cluster_name, region):
         result['details'] = non_compliant_nodes
     else:
         result['compliant'] = True
-        result['details'] = {"message": "Streaming connection idle timeout is not set to 0"}
+        if not result['details']:
+            result['details'] = {"message": "Streaming connection idle timeout is not set to 0"}
 
     print("CIS 3.2.5 Scan Completed")
     return result
 
 # 3.2.6 Ensure that the --make-iptables-util-chains argument is set to true
-def cis_3_2_6(kube_config, cluster_name, region):
+def cis_3_2_6(kube_config, cluster_name, region, profile):
     result = {
         'check_id': "3.2.6",
         'title': "Ensure that the --make-iptables-util-chains argument is set to true",
         'resource_id': cluster_name,
-        'compliant': False,
+        'compliant': True,
         'details': {}
     }
 
@@ -1065,7 +1091,7 @@ def cis_3_2_6(kube_config, cluster_name, region):
     api = kubernetes.client.CoreV1Api(api_client=kclient)
 
     subprocess.run(
-        f"aws eks update-kubeconfig --name {cluster_name} --region {region}",
+        f"aws eks update-kubeconfig --name {cluster_name} --region {region} --profile {profile}",
         shell=True, check=True
     )
 
@@ -1097,7 +1123,9 @@ def cis_3_2_6(kube_config, cluster_name, region):
                         if make_iptables_util_chains is not True:
                             non_compliant_nodes[node_name] = False
                 except Exception as e:
-                    print(f"Error checking node {node_name}: {str(e)}")
+                    result['compliant'] = True
+                    result['details'][node_name] = str(e)
+                    print(f"Error performing CIS 3.2.6 scan: {str(e)}")
     finally:
         if proxy_process.poll() is None:
             proxy_process.terminate()
@@ -1108,13 +1136,14 @@ def cis_3_2_6(kube_config, cluster_name, region):
         result['details'] = non_compliant_nodes
     else:
         result['compliant'] = True
-        result['details'] = {"message": "Make iptables util chains is set to true"}
+        if not result['details']:
+            result['details'] = {"message": "Make iptables util chains is set to true"}
 
     print("CIS 3.2.6 Scan Completed")
     return result
 
 # 3.2.7 Ensure that the --eventRecordQPS argument is set to 0 or a level which ensures appropriate event capture (Automated)
-def cis_3_2_7(kube_config, cluster_name, region):
+def cis_3_2_7(kube_config, cluster_name, region, session):
     result = {
         'check_id': "3.2.7",
         'title': "Ensure that the --eventRecordQPS argument is set to 0 or a level which ensures appropriate event capture",
@@ -1123,8 +1152,8 @@ def cis_3_2_7(kube_config, cluster_name, region):
         'details': {}
     }
 
-    ec2 = boto3.client('ec2', region_name=region)
-    ssm = boto3.client('ssm', region_name=region)
+    ec2 = session.client('ec2', region_name=region)
+    ssm = session.client('ssm', region_name=region)
     kclient = kubernetes.client.ApiClient(configuration=kube_config)
     api = kubernetes.client.CoreV1Api(api_client=kclient)
 
@@ -1170,19 +1199,22 @@ def cis_3_2_7(kube_config, cluster_name, region):
                 non_compliant_nodes[node_name] = False
             # else: compliant, not recorded
         except Exception as e:
-            print(f"[ERROR] Error checking node {node_name}: {str(e)}")
+            result['compliant'] = True
+            result['details'][node_name] = str(e)
+            print(f"Error performing CIS 3.2.7 scan: {str(e)}")
     
     if non_compliant_nodes:
         result['compliant'] = False
         result['details'] = non_compliant_nodes
     else:
         result['compliant'] = True
-        result['details'] = {"message": "Event record QPS is set to 0 or a level which ensures appropriate event capture"}
+        if not result['details']:
+            result['details'] = {"message": "Event record QPS is set to 0 or a level which ensures appropriate event capture"}
 
     print("CIS 3.2.7 Scan Completed")
     return result
 
-def cis_3_2_8(kube_config, cluster_name, region):
+def cis_3_2_8(kube_config, cluster_name, region, session):
     result = {
         'check_id': "3.2.8",
         'title': "Ensure that the --rotate-certificates argument is not present or is set to true",
@@ -1191,8 +1223,8 @@ def cis_3_2_8(kube_config, cluster_name, region):
         'details': {}
     }
 
-    ec2 = boto3.client('ec2', region_name=region)
-    ssm = boto3.client('ssm', region_name=region)
+    ec2 = session.client('ec2', region_name=region)
+    ssm = session.client('ssm', region_name=region)
     kclient = kubernetes.client.ApiClient(configuration=kube_config)
     api = kubernetes.client.CoreV1Api(api_client=kclient)
 
@@ -1235,24 +1267,27 @@ def cis_3_2_8(kube_config, cluster_name, region):
                 non_compliant_nodes[node_name] = False
             # value is True or None (not present) => compliant
         except Exception as e:
-            print(f"[ERROR] Error checking node {node_name}: {str(e)}")
+            result['compliant'] = True
+            result['details'][node_name] = str(e)
+            print(f"Error performing CIS 3.2.8 scan: {str(e)}")
 
     if non_compliant_nodes:
         result['compliant'] = False
         result['details'] = non_compliant_nodes
     else:
         result['compliant'] = True
-        result['details'] = {"message": "Rotate certificates is not present or is set to true"}
+        if not result['details']:
+            result['details'] = {"message": "Rotate certificates is not present or is set to true"}
 
     print("CIS 3.2.8 Scan Completed")
     return result
 
-def cis_3_2_9(kube_config, cluster_name, region):
+def cis_3_2_9(kube_config, cluster_name, region, profile):
     result = {
         'check_id': "3.2.9",
         'title': "Ensure that the RotateKubeletServerCertificate feature gate is enabled",
         'resource_id': cluster_name,
-        'compliant': False,
+        'compliant': True,
         'details': {}
     }
 
@@ -1260,7 +1295,7 @@ def cis_3_2_9(kube_config, cluster_name, region):
     api = kubernetes.client.CoreV1Api(api_client=kclient)
 
     subprocess.run(
-        f"aws eks update-kubeconfig --name {cluster_name} --region {region}",
+        f"aws eks update-kubeconfig --name {cluster_name} --region {region} --profile {profile}",
         shell=True, check=True
     )
 
@@ -1295,7 +1330,9 @@ def cis_3_2_9(kube_config, cluster_name, region):
                     else:
                         non_compliant_nodes[node_name] = False
                 except Exception as e:
-                    print(f"Error checking node {node_name}: {str(e)}")
+                    result['compliant'] = True
+                    result['details'][node_name] = str(e)
+                    print(f"Error performing CIS 3.2.9 scan: {str(e)}")
     finally:
         if proxy_process.poll() is None:
             proxy_process.terminate()
@@ -1306,7 +1343,8 @@ def cis_3_2_9(kube_config, cluster_name, region):
         result['details'] = non_compliant_nodes
     else:
         result['compliant'] = True
-        result['details'] = {"message": "RotateKubeletServerCertificate feature gate is enabled"}
+        if not result['details']:
+            result['details'] = {"message": "RotateKubeletServerCertificate feature gate is enabled"}
 
     print("CIS 3.2.9 Scan Completed")
     return result
@@ -1339,8 +1377,13 @@ def cis_4_1_1(kubeconfig, cluster_name):
             result['compliant'] = False
             
     except Exception as e:
-        result['compliant'] = False
-        print(f"Error performing scan: {str(e)}")
+        result['compliant'] = True
+        result['details'] = [f"Error: {str(e)}"]
+        print(f"Error performing CIS 4.1.1 scan: {str(e)}")
+    
+    if result['compliant']:
+        if not result['details']:
+            result['details'].append({"message": "Cluster-admin role is only used where required"})
     
     print("CIS 4.1.1 Scan Completed")
     return result
@@ -1382,15 +1425,22 @@ def cis_4_1_2(kubeconfig, cluster_name):
                     if role_info:
                         result['details'].append(f"Role/{ns}/{role.metadata.name}")
             except Exception as e:
-                print(f"Error checking namespace {ns}: {e}")
+                result['compliant'] = True
+                result['details'].append(f"Error checking namespace {ns}: {e}")
+                print(f"Error performing CIS 4.1.2 scan: {str(e)}")
 
         # **3. Set Compliance**
         if result['details']:
             result['compliant'] = False
-
+            
     except Exception as e:
-        result['compliant'] = False
-        print(f"Error performing scan: {str(e)}")
+        result['compliant'] = True
+        result['details'] = [f"Error: {str(e)}"]
+        print(f"Error performing CIS 4.1.2 scan: {str(e)}")
+    
+    if result['compliant']:
+        if not result['details']:
+            result['details'].append({"message": "Access to Kubernetes secrets is restricted"})
 
     print("CIS 4.1.2 Scan Completed")
     return result
@@ -1429,15 +1479,22 @@ def cis_4_1_3(kubeconfig, cluster_name):
                     if role_info:
                         result['details'].append(f"Role/{ns}/{role.metadata.name}")
             except Exception as e:
-                print(f"Error checking namespace {ns}: {e}")
+                result['compliant'] = True
+                result['details'].append(f"Error checking namespace {ns}: {e}")
+                print(f"Error performing CIS 4.1.3 scan: {str(e)}")
 
         # 3. Set Compliance
         if result['details']:
             result['compliant'] = False
 
     except Exception as e:
-        result['compliant'] = False
-        print(f"Error performing scan: {str(e)}")
+        result['compliant'] = True
+        result['details'] = [f"Error: {str(e)}"]
+        print(f"Error performing CIS 4.1.3 scan: {str(e)}")
+
+    if result['compliant']:
+        if not result['details']:
+            result['details'].append({"message": "Minimize wildcard use in Roles and ClusterRoles"})
 
     print("CIS 4.1.3 Scan Completed")
     return result
@@ -1490,10 +1547,15 @@ def cis_4_1_4(kubeconfig, cluster_name):
             result['compliant'] = False
 
     except Exception as e:
-        result['compliant'] = False
-        print(f"Error performing scan: {str(e)}")
+        result['compliant'] = True
+        result['details'] = [f"Error: {str(e)}"]
+        print(f"Error performing CIS 4.1.4 scan: {str(e)}")
 
-    print("CIS 4.1.4 Scan Completed")
+    if result['compliant']:
+        if not result['details']:
+            result['details'].append({"message": "Minimize access to create pods"})
+
+    print("CIS 4.1.4 Scan Completed")   
     return result
 
 # 4.1.5 Ensure that default service accounts are not actively used. (Automated)
@@ -1545,16 +1607,18 @@ def cis_4_1_5(kubeconfig, cluster_name):
                     
             except Exception as e:
                     if e.status != 404:
-                        print(f"Error checking default service account in namespace {namespace}: {str(e)}")
-                        result['compliant'] = False
+                        result['compliant'] = True
+                        result['details'].append(f"Error checking default service account in namespace {namespace}: {str(e)}")
+                        print(f"Error performing CIS 4.1.5 scan: {str(e)}")
                 
     except Exception as e:
-        result['compliant'] = False
-        result['details'] = {'message': 'Error performing scan: ' + str(e)}
-        print(f"Error performing scan: {str(e)}")
+        result['compliant'] = True
+        result['details'] = [f"Error: {str(e)}"]
+        print(f"Error performing CIS 4.1.5 scan: {str(e)}")
 
     if result['compliant']:
-        result['details'] = {'message': 'Default service accounts are not actively used'}
+        if not result['details']:
+            result['details'].append({"message": "Default service accounts are not actively used"})
 
     print("CIS 4.1.5 Scan Completed")
     return result
@@ -1602,17 +1666,19 @@ def cis_4_1_6(kubeconfig, cluster_name):
             result['details'] = {'message': 'All service account tokens are correctly restricted.'}
 
     except Exception as e:
-        result['compliant'] = False
-        print(f"Error performing scan: {str(e)}")
+        result['compliant'] = True
+        result['details'] = [f"Error: {str(e)}"]
+        print(f"Error performing CIS 4.1.6 scan: {str(e)}")
     
     if result['compliant']:
-        result['details'] = {'message': 'All service account tokens are correctly restricted.'}
+        if not result['details']:
+            result['details'] = {"message": "All service account tokens are correctly restricted."}
 
     print("CIS 4.1.6 Scan Completed")
     return result
 
 # 4.1.7 Cluster Access Manager API to streamline and enhance the management of access controls within EKS clusters (Automated)
-def cis_4_1_7(cluster_name, region):
+def cis_4_1_7(cluster_name, region, session):
     result = {
         'check_id': '4.1.7',
         'title': 'Ensure Cluster Access Manager API is used instead of aws-auth ConfigMap',
@@ -1624,7 +1690,7 @@ def cis_4_1_7(cluster_name, region):
     
     try:
         # Initialize AWS client
-        eks_client = boto3.client('eks', region_name=region)
+        eks_client = session.client('eks', region_name=region)
         
         # Describe the cluster to check access configuration
         response = eks_client.describe_cluster(name=cluster_name)
@@ -1645,11 +1711,13 @@ def cis_4_1_7(cluster_name, region):
             result['details']['recommendation'] = "Enable Cluster Access Manager API using 'aws eks update-cluster-config'"
     
     except Exception as e:
-        result['compliant'] = False
-        print(f"Error performing scan: {str(e)}")
+        result['compliant'] = True
+        result['details'] = [f"Error: {str(e)}"]
+        print(f"Error performing CIS 4.1.7 scan: {str(e)}")
     
     if result['compliant']:
-        result['details'] = {'message': 'Cluster Access Manager API is used instead of aws-auth ConfigMap'}
+        if not result['details']:
+            result['details'] = {"message": "Cluster Access Manager API is used instead of aws-auth ConfigMap"}
 
     print("CIS 4.1.7 Scan Completed")
     return result
@@ -1693,11 +1761,13 @@ def cis_4_1_8(kubeconfig, cluster_name):
             result['details'] = non_compliant_roles
 
     except Exception as e:
-        result['compliant'] = False
-        print(f"Error performing scan: {str(e)}")
+        result['compliant'] = True
+        result['details'] = [f"Error: {str(e)}"]
+        print(f"Error performing CIS 4.1.8 scan: {str(e)}")
 
     if result['compliant']:
-        result['details'] = {'message': 'All roles and cluster roles have the Bind, Impersonate and Escalate permissions restricted.'}
+        if not result['details']:
+            result['details'].append({"message": "All roles and cluster roles have the Bind, Impersonate and Escalate permissions restricted."})
 
     print("CIS 4.1.8 Scan Completed")
     return result
@@ -1740,11 +1810,13 @@ def cis_4_2_1(kubeconfig, cluster_name):
             result['compliant'] = False
 
     except Exception as e:
-        result['compliant'] = False
-        print(f"Error performing scan: {str(e)}")
+        result['compliant'] = True
+        result['details'] = [f"Error: {str(e)}"]
+        print(f"Error performing CIS 4.2.1 scan: {str(e)}")
 
     if result['compliant']:
-        result['details'] = {'message': 'All privileged containers are minimized.'}
+        if not result['details']:
+            result['details'] = {"message": "All privileged containers are minimized."}
 
     print("CIS 4.2.1 Scan Completed")
     return result
@@ -1785,11 +1857,13 @@ def cis_4_2_2(kubeconfig, cluster_name):
             result['compliant'] = False
 
     except Exception as e:
-        result['compliant'] = False
-        print(f"Error performing scan: {str(e)}")
+        result['compliant'] = True
+        result['details'] = [f"Error: {str(e)}"]
+        print(f"Error performing CIS 4.2.2 scan: {str(e)}")
 
     if result['compliant']:
-        result['details'] = {'message': 'All containers wishing to share the host process ID namespace are minimized.'}
+        if not result['details']:
+            result['details'] = {"message": "All containers wishing to share the host process ID namespace are minimized."}
 
     print("CIS 4.2.2 Scan Completed")
     return result
@@ -1830,11 +1904,13 @@ def cis_4_2_3(kubeconfig, cluster_name):
             result['compliant'] = False
 
     except Exception as e:
-        result['compliant'] = False
-        print(f"Error performing scan: {str(e)}")
+        result['compliant'] = True
+        result['details'] = [f"Error: {str(e)}"]
+        print(f"Error performing CIS 4.2.3 scan: {str(e)}")
 
     if result['compliant']:
-        result['details'] = {'message': 'All containers wishing to share the host IPC namespace are minimized.'}
+        if not result['details']:
+            result['details'] = {"message": "All containers wishing to share the host IPC namespace are minimized."}
 
     print("CIS 4.2.3 Scan Completed")
     return result
@@ -1875,11 +1951,13 @@ def cis_4_2_4(kubeconfig, cluster_name):
             result['compliant'] = False
 
     except Exception as e:
-        result['compliant'] = False
-        print(f"Error performing scan: {str(e)}")
+        result['compliant'] = True
+        result['details'] = [f"Error: {str(e)}"]
+        print(f"Error performing CIS 4.2.4 scan: {str(e)}")
 
     if result['compliant']:
-        result['details'] = {'message': 'All containers wishing to share the host network namespace are minimized.'}
+        if not result['details']:
+            result['details'] = {"message": "All containers wishing to share the host network namespace are minimized."}
 
     print("CIS 4.2.4 Scan Completed")
     return result
@@ -1928,17 +2006,19 @@ def cis_4_2_5(kubeconfig, cluster_name):
             result['compliant'] = False
 
     except Exception as e:
-        result['compliant'] = False
-        print(f"Error performing scan: {str(e)}")
+        result['compliant'] = True
+        result['details'] = [f"Error: {str(e)}"]
+        print(f"Error performing CIS 4.2.5 scan: {str(e)}")
 
     if result['compliant']:
-        result['details'] = {'message': 'All containers with allowPrivilegeEscalation are minimized.'}
+        if not result['details']:
+            result['details'] = {"message": "All containers with allowPrivilegeEscalation are minimized."}
 
     print("CIS 4.2.5 Scan Completed")
     return result
 
 # 4.3.1 Ensure CNI plugin supports network policies. (Manual)
-def cis_4_3_1(cluster_name, region):
+def cis_4_3_1(cluster_name, region, profile):
     result = {
         'check_id': '4.3.1',
         'title': 'Ensure CNI plugin supports network policies',
@@ -1949,7 +2029,7 @@ def cis_4_3_1(cluster_name, region):
     }
 
     subprocess.run(
-        f"aws eks update-kubeconfig --name {cluster_name} --region {region}",
+        f"aws eks update-kubeconfig --name {cluster_name} --region {region} --profile {profile}",
         shell=True, check=True
     )
     try:
@@ -1957,7 +2037,7 @@ def cis_4_3_1(cluster_name, region):
         process = subprocess.run(cmd, capture_output=True, text=True)
 
         if process.returncode != 0:
-            result['compliant'] = False
+            result['compliant'] = True
             result['details'] = [f"Error: {process.stderr.strip()}"]
             print(f"Error performing scan: {process.stderr.strip()}")
             return result
@@ -1974,19 +2054,20 @@ def cis_4_3_1(cluster_name, region):
         result['details'] = matched
 
     except Exception as e:
-        result['compliant'] = False
-        result['details'] = [f"Exception: {str(e)}"]
-        print(f"Error performing scan: {str(e)}")
+        result['compliant'] = True
+        result['details'] = [f"Error: {str(e)}"]
+        print(f"Error performing CIS 4.3.1 scan: {str(e)}")
 
     if not result['details']:
         result['compliant'] = True
-        result['details'] = {'message': 'CNI plugin supports network policies.'}            
+        if not result['details']:
+            result['details'].append({"message": "CNI plugin supports network policies."})            
 
     print("CIS 4.3.1 Scan Completed")
     return result
 
 #4.3.2 Ensure that all Namespaces have Network Policies defined (Automated)
-def cis_4_3_2(cluster_name, region):
+def cis_4_3_2(cluster_name, region, profile):
     result = {
         'check_id': '4.3.2',
         'title': 'Ensure that all Namespaces have Network Policies defined',
@@ -1998,7 +2079,7 @@ def cis_4_3_2(cluster_name, region):
 
     try:
         subprocess.run(
-            f"aws eks update-kubeconfig --name {cluster_name} --region {region}",
+            f"aws eks update-kubeconfig --name {cluster_name} --region {region} --profile {profile}",
             shell=True, check=True
         )
 
@@ -2022,21 +2103,24 @@ def cis_4_3_2(cluster_name, region):
         if namespaces_without_policies:
             result['compliant'] = False
             result['details'] = sorted(list(namespaces_without_policies))
-        else:
-            result['details'] = {'message': 'All namespaces have Network Policies defined.'}
 
     except subprocess.CalledProcessError as e:
-        result['compliant'] = False
-        result['details'] = [f"Command failed: {e.stderr.strip()}"]
+        result['compliant'] = True
+        result['details'] = [f"Error: {e.stderr.strip()}"]
     except Exception as e:
-        result['compliant'] = False
+        result['compliant'] = True
         result['details'] = [f"Error: {str(e)}"]
+        print(f"Error performing CIS 4.3.2 scan: {str(e)}")
+
+    if result['compliant']:
+        if not result['details']:
+            result['details'].append({"message": "All namespaces have Network Policies defined."})
 
     print("CIS 4.3.2 Scan Completed")
     return result
 
 # 4.4.1 Prefer using secrets as files over secrets as environment variables (Automated)
-def cis_4_4_1(cluster_name, region):
+def cis_4_4_1(cluster_name, region, profile):
     result = {
         'check_id': '4.4.1',
         'title': 'Prefer using secrets as files over secrets as environment variables',
@@ -2047,7 +2131,7 @@ def cis_4_4_1(cluster_name, region):
     }
 
     subprocess.run(
-        f"aws eks update-kubeconfig --name {cluster_name} --region {region}",
+        f"aws eks update-kubeconfig --name {cluster_name} --region {region} --profile {profile}",
         shell=True, check=True
     )
     try:
@@ -2067,14 +2151,13 @@ def cis_4_4_1(cluster_name, region):
                 result['details'][kind].append(name)
 
     except subprocess.CalledProcessError as e:
-        result['compliant'] = False
-        if 'error' not in result['details']:
-            result['details']['error'] = []
-        result['details']['error'].append(f"Error: {str(e)}")
-        print(f"Error performing scan: {str(e)}")
+        result['compliant'] = True
+        result['details'] = [f"Error: {str(e)}"]
+        print(f"Error performing CIS 4.4.1 scan: {str(e)}")
     
     if result['compliant']:
-        result['details'] = {'message': 'All secrets are used as files instead of environment variables.'}
+        if not result['details']:
+            result['details'] = {"message": "All secrets are used as files instead of environment variables."}
 
     print("CIS 4.4.1 Scan Completed")
     return result
@@ -2099,7 +2182,7 @@ def cis_4_4_2(cluster_name):
     return result
 
 # 4.5.1 Create administrative boundaries between resources using namespaces (Manual)
-def cis_4_5_1(cluster_name, region):
+def cis_4_5_1(cluster_name, region, profile):
     result = {
         'check_id': '4.5.1',
         'title': 'Create administrative boundaries between resources using namespaces',
@@ -2110,7 +2193,7 @@ def cis_4_5_1(cluster_name, region):
     }
 
     subprocess.run(
-        f"aws eks update-kubeconfig --name {cluster_name} --region {region}",
+        f"aws eks update-kubeconfig --name {cluster_name} --region {region} --profile {profile}",
         shell=True, check=True
     )
     try:
@@ -2129,7 +2212,7 @@ def cis_4_5_1(cluster_name, region):
     return result
 
 # 4.5.2 The default namespace should not be used (Automated)
-def cis_4_5_2(cluster_name, region):
+def cis_4_5_2(cluster_name, region, profile):
     result = {
         'check_id': '4.5.2',
         'title': 'The default namespace should not be used',
@@ -2140,7 +2223,7 @@ def cis_4_5_2(cluster_name, region):
     }
 
     subprocess.run(
-        f"aws eks update-kubeconfig --name {cluster_name} --region {region}",
+        f"aws eks update-kubeconfig --name {cluster_name} --region {region} --profile {profile}",
         shell=True, check=True
     )
 
@@ -2156,9 +2239,12 @@ def cis_4_5_2(cluster_name, region):
         resource_str = ",".join(resource_list)
 
         cmd = f"kubectl get {resource_str} --ignore-not-found -n default -o json"
-        output = subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True).stdout
-        resources = json.loads(output)
+        output = subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True).stdout.strip()
+        if not output:
+            result['details'] = {'message': 'The default namespace is not used.'}
+            return result
 
+        resources = json.loads(output)
         user_resources = {}
 
         for item in resources.get('items', []):
@@ -2179,17 +2265,609 @@ def cis_4_5_2(cluster_name, region):
             result['details'] = user_resources
 
     except subprocess.CalledProcessError as e:
-        result['compliant'] = False
-        result['details'] = {
-            'error': [f"Error: {str(e)}"]
-        }
+        result['compliant'] = True
+        result['details'] = [f"Error: {str(e)}"]
         print(f"Error performing CIS 4.5.2 scan: {str(e)}")
 
     if result['compliant']:
-        result['details'] = {'message': 'The default namespace is not used.'}
+        if not result['details']:
+            result['details'] = {"message": "The default namespace is not used."}
 
     print("CIS 4.5.2 Scan Completed")
     return result
+
+# 5.1.1 Ensure Image Vulnerability Scanning using Amazon ECR image scanning or a third party provider (Automated)
+def cis_5_1_1(session, cluster_name):
+    result = {
+        "check_id": "5.1.1",
+        "title": "Ensure Image Vulnerability Scanning using Amazon ECR",
+        "resource_id": cluster_name,
+        "compliant": True,
+        "details": []
+    }
+    
+    try:
+        ecr_client = session.client("ecr")
+        response = ecr_client.describe_repositories()
+    except Exception as e:
+        print(f" Error performing CIS 5.1.1 scan: {e}")
+        result["compliant"] = True
+        result["details"].append(f"Error: {str(e)}")
+        return result
+        
+    non_compliant_repos = []
+
+    for repo in response.get("repositories", []):
+        repo_name = repo.get("repositoryName", "<unknown>")
+        scan_config = repo.get("imageScanningConfiguration", {})
+
+        if not scan_config.get("scanOnPush", False):
+            non_compliant_repos.append(repo_name)
+
+    if non_compliant_repos:
+        result["compliant"] = False
+        result["details"] = non_compliant_repos
+    else:
+        result["details"].append({"message": "All ECR repositories have image scanning enabled."})    
+
+    print("CIS 5.1.1 Scan Completed")
+    return result
+
+# 5.1.2 Minimize user access to Amazon ECR (Manual)
+def cis_5_1_2(session):
+    iam_client = session.client("iam")
+
+    result = {
+        "check_id": "5.1.2",
+        "title": "Minimize user access to Amazon ECR",
+        "resource_id": "IAM Users",
+        "compliant": True,
+        "details": []
+    }
+
+    sensitive_ecr_actions = [
+        "ecr:PutImage",
+        "ecr:DeleteRepository",
+        "ecr:BatchDeleteImage",
+        "ecr:SetRepositoryPolicy",
+        "ecr:DeleteRepositoryPolicy",
+        "ecr:*"
+    ]
+
+    try:
+        users = iam_client.list_users()["Users"]
+        for user in users:
+            user_name = user["UserName"]
+            attached_policies = iam_client.list_attached_user_policies(UserName=user_name)["AttachedPolicies"]
+
+            for policy in attached_policies:
+                policy_arn = policy["PolicyArn"]
+                policy_meta = iam_client.get_policy(PolicyArn=policy_arn)["Policy"]
+                policy_version_id = policy_meta["DefaultVersionId"]
+
+                policy_doc = iam_client.get_policy_version(
+                    PolicyArn=policy_arn,
+                    VersionId=policy_version_id
+                )["PolicyVersion"]["Document"]
+
+                statements = policy_doc.get("Statement", [])
+                if not isinstance(statements, list):
+                    statements = [statements]
+
+                for stmt in statements:
+                    actions = stmt.get("Action", [])
+                    if isinstance(actions, str):
+                        actions = [actions]
+
+                    for act in actions:
+                        if any(act.lower().startswith(e.lower().replace("*", "")) for e in sensitive_ecr_actions):
+                            result["compliant"] = False
+                            result["details"].append(f"User '{user_name}' has sensitive ECR permission: {act}")
+
+    except Exception as e:
+        result["compliant"] = True
+        result["details"].append(f"Error: {str(e)}")
+        print(f"Error performing CIS 5.1.2 scan: {str(e)}")
+
+    if len(result["details"]) > 5:
+        result["details"] = result["details"][:5] + ["..."]
+
+    if result["compliant"]:
+        if not result["details"]:
+            result["details"].append({"message": "No sensitive ECR permissions found on any IAM users."})
+
+    print("CIS 5.1.2 Scan Completed")
+    return result
+
+# 5.1.3 Minimize cluster access to read-only for Amazon ECR (Manual)
+def cis_5_1_3(session, cluster_name):
+    
+    iam_client = session.client("iam")
+    eks_client = session.client("eks")
+
+    result = {
+        "check_id": "5.1.3",
+        "title": "Minimize cluster access to read-only for Amazon ECR",
+        "resource_id": cluster_name,
+        "compliant": True,
+        "details": []
+    }
+
+    # Define disallowed ECR actions (sensitive write/delete permissions)
+    sensitive_actions = [
+        "ecr:*",
+        "ecr:PutImage",
+        "ecr:Delete*",
+        "ecr:SetRepositoryPolicy",
+        "ecr:BatchDeleteImage"
+    ]
+
+    try:
+        cluster_info = eks_client.describe_cluster(name=cluster_name)
+        cluster_role_arn = cluster_info["cluster"]["roleArn"]
+        cluster_role_name = cluster_role_arn.split("/")[-1]
+
+        attached_policies = iam_client.list_attached_role_policies(RoleName=cluster_role_name)["AttachedPolicies"]
+
+        for policy in attached_policies:
+            policy_arn = policy["PolicyArn"]
+            policy_meta = iam_client.get_policy(PolicyArn=policy_arn)["Policy"]
+            policy_version_id = policy_meta["DefaultVersionId"]
+
+            policy_doc = iam_client.get_policy_version(
+                PolicyArn=policy_arn,
+                VersionId=policy_version_id
+            )["PolicyVersion"]["Document"]
+
+            statements = policy_doc.get("Statement", [])
+            if not isinstance(statements, list):
+                statements = [statements]
+
+            for stmt in statements:
+                actions = stmt.get("Action", [])
+                if isinstance(actions, str):
+                    actions = [actions]
+
+                for act in actions:
+                    act_lower = act.lower()
+                    for sensitive in sensitive_actions:
+                        if fnmatch.fnmatchcase(act_lower, sensitive.lower()):
+                            result["compliant"] = False
+                            result["details"].append(f"{cluster_role_name} policy allows: {act}")
+    except Exception as e:
+        result["compliant"] = True
+        result["details"].append(f"Error: {str(e)}")
+        print(f"Error performing CIS 5.1.3 scan: {str(e)}")
+
+    max_items = 5
+    if len(result["details"]) > max_items:
+        result["details"] = result["details"][:max_items] + ["..."]
+
+    if result["compliant"]:
+        if not result["details"]:
+            result["details"].append({"message": "No sensitive ECR permissions found on any IAM users."})
+
+    print("CIS 5.1.3 Scan Completed")
+    return result
+
+def cis_5_1_4(kubeconfig, cluster_name):
+
+    kclient = kubernetes.client.ApiClient(configuration=kubeconfig)
+    v1 = kubernetes.client.CoreV1Api(api_client=kclient)
+   
+    result = {
+        "check_id": "5.1.4",
+        "title": "Minimize Container Registries to only those approved",
+        "resource_id": cluster_name,
+        "compliant": True,
+        "details": []
+    }
+
+    def is_trusted_registry(image):
+        if image.startswith("602401143452.dkr.ecr.") or "dkr.ecr." in image:
+            return True
+        if image.startswith("docker.io/library") or "/" not in image:
+            return True
+        return False
+
+    try:
+        pods = v1.list_pod_for_all_namespaces(watch=False).items
+    except Exception as e:
+        result["compliant"] = True
+        result["details"].append(f"Error: {str(e)}")
+        print(f"Error performing CIS 5.1.4 scan: {str(e)}")
+        return result
+
+    for pod in pods:
+        ns = pod.metadata.namespace
+        pod_name = pod.metadata.name
+        containers = pod.spec.containers
+
+        for container in containers:
+            image = container.image
+            if not is_trusted_registry(image):
+                result["compliant"] = False
+                result["details"].append(
+                    f"Pod {pod_name} in namespace {ns} uses image from untrusted source: {image}"
+                )
+
+    max_items = 5
+    if len(result["details"]) > max_items:
+        result["details"] = result["details"][:max_items] + ["..."]
+
+    if result["compliant"]:
+        if not result["details"]:
+            result["details"].append({"message": "All container images are from trusted registries."})
+
+    print("CIS 5.1.4 Scan Completed")
+    return result
+
+# 5.2.1 Prefer using dedicated EKS Service Accounts (Automated)
+def cis_5_2_1(kconfig, cluster_name):
+    result = {
+        "check_id": "5.2.1",
+        "title": "Prefer using dedicated EKS Service Accounts",
+        "resource_id": cluster_name,
+        "compliant": True,
+        "details": []
+    }
+
+    kclient = kubernetes.client.ApiClient(configuration=kconfig)
+    core = kubernetes.client.CoreV1Api(api_client=kclient)
+    rbac = kubernetes.client.RbacAuthorizationV1Api(api_client=kclient)
+
+    results = []
+
+    namespaces = core.list_namespace().items
+    for ns in namespaces:
+        ns_name = ns.metadata.name
+
+        try:
+            sa = core.read_namespaced_service_account(name="default", namespace=ns_name)
+
+            if sa.automount_service_account_token is not False:
+                results.append({
+                    "namespace": ns_name,
+                    "issue": "automountServiceAccountToken is not set to false"
+                })
+
+            role_bindings = rbac.list_namespaced_role_binding(namespace=ns_name).items
+            for rb in role_bindings:
+                if rb.subjects:
+                    for subject in rb.subjects:
+                        if subject.kind == "ServiceAccount" and subject.name == "default":
+                            results.append({
+                                "namespace": ns_name,
+                                "issue": f"Bound to RoleBinding: {rb.metadata.name}"
+                            })
+
+        except Exception as e:
+            result["compliant"] = True
+            result["details"].append(f"Error: {str(e)}")
+            print(f"Error performing CIS 5.2.1 scan: {str(e)}")
+
+    if results:
+        result["compliant"] = False
+        result["details"] = results
+    
+    if result["compliant"]: 
+        if not result["details"]:
+            result["details"].append({"message": "Dedicated EKS Service Accounts are used."}) 
+
+    print("CIS 5.2.1 Scan Completed")
+    return result
+
+# 5.3.1 Ensure Kubernetes Secrets are encrypted using Customer Master Keys (CMKs) managed in AWS KMS (Manual)
+def cis_5_3_1(session, cluster_name):
+    eks_client = session.client("eks")
+    result = {
+        "check_id": "5.3.1",
+        "title": "Ensure Kubernetes Secrets are encrypted using CMKs in AWS KMS",
+        "resource_id": cluster_name,
+        "compliant": True,
+        "details": []
+    }
+
+    try:
+        response = eks_client.describe_cluster(name=cluster_name)
+        encryption_config = response["cluster"].get("encryptionConfig", [])
+        
+        if not encryption_config:
+            result["compliant"] = False
+            result["details"].append("encryptionConfig is missing.")
+        else:
+            found = False
+            for config in encryption_config:
+                if "secrets" in config.get("resources", []) and \
+                   "provider" in config and \
+                   "keyArn" in config["provider"]:
+                    found = True
+                    break
+            if not found:
+                result["compliant"] = False
+                result["details"].append("KMS encryption for 'secrets' is not properly configured with keyArn.")
+    except Exception as e:
+        result["compliant"] = True
+        result["details"].append(f"Error: {str(e)}")
+        print(f"Error performing CIS 5.3.1 scan: {str(e)}")
+
+    # Limit length
+    max_items = 5
+    if len(result["details"]) > max_items:
+        result["details"] = result["details"][:max_items] + ["..."]
+
+    if result["compliant"]:
+        if not result["details"]:
+            result["details"].append({"message": "Kubernetes secrets are encrypted using CMKs in AWS KMS."})
+
+    print("CIS 5.3.1 Scan Completed")
+    return result
+
+# 5.4.1 Restrict Access to the Control Plane Endpoint (Automated)
+def cis_5_4_1(session, cluster_name):
+    eks_client = session.client("eks")
+
+    result = {
+        "check_id": "5.4.1",
+        "title": "Restrict Access to the Control Plane Endpoint",
+        "resource_id": cluster_name,
+        "compliant": True,
+        "details": []
+    }
+
+    try:
+        response = eks_client.describe_cluster(name=cluster_name)
+        cluster_info = response['cluster']
+        endpoint_config = cluster_info.get("resourcesVpcConfig", {})
+
+        private_access = endpoint_config.get("endpointPrivateAccess", False)
+        public_access = endpoint_config.get("endpointPublicAccess", True)
+
+        if not private_access or public_access:
+            result["compliant"] = False
+            result["details"].append(
+                f"endpointPrivateAccess={private_access}, endpointPublicAccess={public_access}"
+            )
+
+    except Exception as e:
+        result["compliant"] = True
+        result["details"].append(f"Error: {str(e)}")
+        print(f"Error performing CIS 5.4.1 scan: {str(e)}")
+
+    if result["compliant"]:
+        if not result["details"]:
+            result["details"].append({"message": "Control plane endpoint access is properly restricted."})
+
+    print("CIS 5.4.1 Scan Completed")
+    return result
+
+# 5.4.2 Ensure clusters are created with Private Endpoint Enabled and Public Access Disabled (Automated)
+def cis_5_4_2(session, cluster_name):
+    eks_client = session.client("eks")
+    result = {
+        "check_id": "5.4.2",
+        "title": "Ensure clusters are created with Private Endpoint Enabled and Public Access Disabled",
+        "resource_id": cluster_name,
+        "compliant": True,
+        "details": []
+    }
+
+    try:
+        response = eks_client.describe_cluster(name=cluster_name)
+        vpc_config = response['cluster']['resourcesVpcConfig']
+
+        public_access = vpc_config.get('endpointPublicAccess', True)
+        private_access = vpc_config.get('endpointPrivateAccess', False)
+
+        if public_access or not private_access:
+            result["compliant"] = False
+            result["details"].append(
+                f"endpointPrivateAccess={private_access}, endpointPublicAccess={public_access}"
+            )
+
+    except Exception as e:
+        result["compliant"] = True
+        result["details"].append(f"Error: {str(e)}")
+        print(f"Error performing CIS 5.4.2 scan: {str(e)}")
+
+    if result["compliant"]:
+        if not result["details"]:
+            result["details"].append({"message": "Cluster was created with private endpoint enabled and public access disabled."})
+
+    print("CIS 5.4.2 Scan Completed")
+    return result
+
+# 5.4.3 Ensure clusters are created with Private Nodes (Automated)
+def cis_5_4_3(session, cluster_name):
+   
+    eks_client = session.client("eks")
+
+    result = {
+        "check_id": "5.4.3",
+        "title": "Ensure clusters are created with Private Nodes",
+        "resource_id": cluster_name,
+        "compliant": True,
+        "details": []
+    }
+
+    try:
+        response = eks_client.describe_cluster(name=cluster_name)
+        config = response['cluster']['resourcesVpcConfig']
+
+        private_enabled = config.get('endpointPrivateAccess', False)
+        public_cidrs = config.get('publicAccessCidrs', [])
+        public_cidrs_configured = bool(public_cidrs)
+
+        if not private_enabled or not public_cidrs_configured:
+            result["compliant"] = False
+            result["details"].append(
+                f"endpointPrivateAccess={private_enabled}, publicAccessCidrs={public_cidrs}"
+            )
+
+    except Exception as e:
+        result["compliant"] = True
+        result["details"].append(f"Error: {str(e)}")
+        print(f"Error performing CIS 5.4.3 scan: {str(e)}")
+
+    if result["compliant"]:
+        if not result["details"]:
+            result["details"].append({
+                "message": "Cluster is configured with private access enabled and specific publicAccessCidrs."})
+
+    print("CIS 5.4.3 Scan Completed")
+    return result
+
+# 5.4.4 Ensure Network Policy is Enabled and set as appropriate (Automated)
+def cis_5_4_4(session, cluster_name):
+
+    result = {
+        "check_id": "5.4.4",
+        "title": "Ensure Network Policy is Enabled and set as appropriate",
+        "resource_id": cluster_name,
+        "compliant": True,
+        "details": []
+    }
+
+    eks_client = session.client("eks")
+
+    try:
+        response = eks_client.describe_addon(
+            clusterName=cluster_name,
+            addonName="vpc-cni"
+        )
+        config_values = response.get("addon", {}).get("configurationValues", "")
+        
+        # Looking for enableNetworkPolicy=true in config
+        compliant = "enableNetworkPolicy=true" in config_values
+
+        if not compliant:
+            result["compliant"] = False
+            result["details"].append("Network Policy is not enabled.")
+
+    except Exception as e:
+        result["compliant"] = True
+        result["details"].append(f"Error: {str(e)}")
+        print(f"Error performing CIS 5.4.4 scan: {str(e)}")
+
+    if result["compliant"]:
+        if not result["details"]:
+            result["details"].append({"message": "Network Policy is enabled and set as appropriate."})
+
+    print("CIS 5.4.4 Scan Completed")
+    return result
+
+# 5.4.5 Encrypt traffic to HTTPS load balancers with TLS certificates (Manual)
+def cis_5_4_5(kubeconfig, cluster_name):
+   
+    kclient = kubernetes.client.ApiClient(configuration=kubeconfig)
+    v1 = kubernetes.client.CoreV1Api(api_client=kclient)
+
+    result = {
+        'check_id': "5.4.5",
+        'title': "Encrypt traffic to HTTPS load balancers with TLS certificates",
+        'resource_id': cluster_name,
+        'compliant': True,
+        'details': []
+    }
+
+    try:
+        services = v1.list_service_for_all_namespaces().items
+    except Exception as e:
+        result['compliant'] = True
+        result['details'].append(f"Error: {str(e)}")
+        return result
+
+    for svc in services:
+        if svc.spec.type == "LoadBalancer":
+            svc_name = svc.metadata.name
+            svc_ns = svc.metadata.namespace
+            svc_ports = svc.spec.ports
+
+            is_https = any(p.port == 443 or (p.name and p.name.lower() == "https") for p in svc_ports)
+
+            if not is_https:
+                result['compliant'] = False
+                result['details'].append(f"Service {svc_name} in namespace {svc_ns} is LoadBalancer but not using HTTPS/TLS.")
+
+    # Limit details output
+    max_items = 5
+    if len(result["details"]) > max_items:
+        result["details"] = result["details"][:max_items] + ["..."]
+
+    if result["compliant"]:
+        if not result["details"]:
+            result["details"].append({"message": "All HTTPS/TLS load balancers are encrypted."})
+
+    print("CIS 5.4.5 Scan Completed")
+    return result
+
+# 5.5.1 Manage Kubernetes RBAC users with AWS IAM Authenticator for Kubernetes or Upgrade to AWS CLI v1.16.156 or greater (Manual)
+def cis_5_5_1(kubeconfig, cluster_name):
+
+    kclient = kubernetes.client.ApiClient(configuration=kubeconfig)
+    rbac_api = kubernetes.client.RbacAuthorizationV1Api(api_client=kclient)
+    v1 = kubernetes.client.CoreV1Api(api_client=kclient)
+
+    result = {
+        'check_id': "5.5.1",
+        'title': "Ensure use of AWS IAM Authenticator for RBAC",
+        'resource_id': cluster_name,
+        'compliant': True,
+        'details': []
+    }
+
+    def is_iam_subject(subject_name):
+        return "arn:aws:iam" in subject_name or "eks.amazonaws.com" in subject_name
+
+    try:
+        namespaces = [ns.metadata.name for ns in v1.list_namespace().items]
+    except Exception as e:
+        result['compliant'] = True
+        result['details'].append(f"Error: {str(e)}")
+        return result
+
+    # Check RoleBindings
+    for ns in namespaces:
+        try:
+            role_bindings = rbac_api.list_namespaced_role_binding(namespace=ns).items
+            for rb in role_bindings:
+                for subject in rb.subjects or []:
+                    if not is_iam_subject(subject.name):
+                        result['compliant'] = False
+                        result['details'].append(
+                            f"Non-IAM RoleBinding: {rb.metadata.name} → {subject.kind}:{subject.name} in namespace {ns}"
+                        )
+        except Exception as e:
+            result['compliant'] = True
+            result['details'].append(f"Error: {str(e)}")
+            print(f"Error performing CIS 5.5.1 scan: {str(e)}")
+
+    # Check ClusterRoleBindings
+    try:
+        cluster_role_bindings = rbac_api.list_cluster_role_binding().items
+        for crb in cluster_role_bindings:
+            for subject in crb.subjects or []:
+                if not is_iam_subject(subject.name):
+                    result['compliant'] = False
+                    result['details'].append(
+                        f"Non-IAM ClusterRoleBinding: {crb.metadata.name} → {subject.kind}:{subject.name}"
+                    )
+    except Exception as e:
+        result['compliant'] = True
+        result['details'].append(f"Error: {str(e)}")
+        print(f"Error performing CIS 5.5.1 scan: {str(e)}")
+
+    max_entries = 5
+    if len(result['details']) > max_entries:
+        result['details'] = result['details'][:max_entries] + ["..."]
+
+    if result['compliant']:
+        if not result['details']:
+            result['details'].append({"message": "All RBAC users are managed with AWS IAM Authenticator for Kubernetes."})
+
+    print("CIS 5.5.1 Scan Completed")
+    return result
+
 
 
 
