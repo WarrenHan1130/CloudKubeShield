@@ -511,14 +511,14 @@ In this part, we will introduce how to deploy our code step by step.
 ✅ Step 1: Install project dependencies (requirements.txt)
 + 📌 1. Make sure you have created a virtual environment (optional but recommended)
 
-```json
+```bash
 	python3 -m venv venv
 	source venv/bin/activate # Linux/macOS
 	venv\Scripts\activate # Windows
 ```
 
 + 📌 2. Install dependencies in requirements.txt
-```json
+```bash
 	pip install -r requirements.txt
 ```
 + 📄 requirements.txt content is as follows:
@@ -529,7 +529,7 @@ In this part, we will introduce how to deploy our code step by step.
 	+ requests
 
 + 📌 3. Check if the installation is successful (optional)
-```json
+```bash
 	pip list
 ```
 
@@ -541,12 +541,12 @@ In this part, we will introduce how to deploy our code step by step.
 
 	+ Download and install
 
-	```json
+	```bash
 		curl "https://awscli.amazonaws.com/AWSCLIV2.pkg" -o "AWSCLIV2.pkg"
 		sudo installer -pkg AWSCLIV2.pkg -target /
 	```
 	+ Verify installation
-	```json
+	```bash
 		aws --version
 	```
 	+ The output should be similar to:
@@ -566,7 +566,7 @@ In this part, we will introduce how to deploy our code step by step.
 
 	
 	+ Verify the installation (in Command Prompt or PowerShell)
-	```json
+	```bash
 		aws --version
 	```
 	+ The output should be similar to:
@@ -593,12 +593,12 @@ In this part, we will introduce how to deploy our code step by step.
 
 ✅ Step 2: Configure AWS credentials
 
-```json
+```bash
 	aws-tool> configure
 ```
 You can enter a custom profile name or leave it blank to use the default. When entering Access Key/Secret, please use an IAM user (such as Admin user) who has joined the EKS cluster permissions so that you can call Kubernetes resources later:
 
-```json
+```bash
 	AWS Access Key ID ➤ Get from IAM user
 	AWS Secret Access Key ➤ Get from IAM user
 	Region name ➤ As us-east-1
@@ -610,7 +610,7 @@ You can enter a custom profile name or leave it blank to use the default. When e
 
 ✅ Step 3: List all available profiles
 
-```json
+```bash
 	aws-tool> list-profiles
 ```
 
@@ -621,7 +621,7 @@ Output example:
 
 ✅ Step 4: Test whether the connection is successful
 
-```json
+```bash
 	aws-tool> test-connection
 ```
 
@@ -633,7 +633,7 @@ If the connection is successful, the current account and IAM user information wi
 
 🚀 One-click command
 
-```json
+```bash
 	python interface.py --auto
 ```
 
@@ -759,11 +759,154 @@ The following controls are fully can be automatically remediated after scan fini
 >Links to the AWS documentation have been provided, where you can find more detailed information about the controls. 
 
 # 🧩 7 Remediation example
+🔹 CIS 2.1.1 - EKS audit log is not enabled
++ Test objective: Confirm that no audit log type is enabled when creating a cluster.
 
-[![Video Demo](https://img.youtube.com/vi/Gkn6ny2fq-4/0.jpg)](https://youtu.be/Gkn6ny2fq-4)
++ Steps:
+	
+	+ Log in to the AWS Management Console and navigate to EKS → Clusters → Target cluster name → Observability.
+
+	+ Scroll down to the Control plane logs section and click Manage logging in the upper right corner.
+
+	+ Check to see if all log types are off (grey).
+
+	+ If all are off, then this item is considered non-compliant.
+
+	![AWS EKS24](./ScreenShots/example1.png)
+
+	![AWS EKS25](./ScreenShots/example2.png)
+
++ Expected result: Cluster clusterLogging field is empty, not meeting the benchmark requirements.
+
+🔹 CIS 3.1.1 - kubeconfig permissions are greater than 644
++ Test objective: Verify that /etc/kubernetes/kubelet/kubeconfig permissions are improperly set.
+
++ Steps:
+
+	+ Connect to the EC2 under the cluster then run the following command:
+
+	```bash
+		chmod 666 /etc/kubernetes/kubelet/kubelet-config.json
+	```
++ Expected result: File permissions are 666, not read-write (644 or less), marked as non-compliant.
+
+🔹 CIS 3.1.2 - kubeconfig file is not owned by root
++ Test objective: Verify that kubeconfig file owner is not root:root.
+
++ Steps:
+
+	+ Connect to the EC2 under the cluster then run the following command:
+
+	```bash
+		chown ec2-user:ec2-user /etc/kubernetes/kubelet/kubelet-config.json
+	```
+
++ Expected result: File owner is not root, group is not root, not meeting the benchmark requirements.
+
+🔹 CIS 3.2.1 - Enabled Anonymous Auth
++ Test objective: Check if anonymous access is allowed in kubelet configuration.
+
++ Steps:
+
+	+ Connect to the EC2 under the cluster then run the following command:
+
+	```bash
+		sudo vi /etc/kubernetes/kubelet/kubelet-config.json
+	```
+	 
+	+ Edit:
+
+	```json
+		authentication:
+			anonymous:
+				enabled: true
+	```
+
+	+ Then run the following command:
+	```bash
+		sudo systemctl restart kubelet
+	```
+
++ Expected result: Enable anonymous.enabled: true, which violates the baseline recommendation.
+
+🔹 CIS 3.2.2 - authorization-mode is set to AlwaysAllow
++ Test objective: Confirm that kubelet authorization mode does not use RBAC or Webhook.
+
++ Steps:
+
+	+ Connect to the EC2 under the cluster then run the following command:
+
+	```bash
+		sudo vi /etc/kubernetes/kubelet/kubelet-config.json
+	```
+	 
+	+ Edit:
+
+	```json
+		authorization
+    		mode: AlwaysAllow
+	```
+
+	+ Then run the following command:
+	```bash
+		sudo systemctl restart kubelet
+	```
+
++ Expected result: Set to AlwaysAllow, skip permission control, which is a high-risk configuration.
+
+🔹 CIS 3.2.4 - Read-only port is enabled
++ Test objective: Confirm that readOnlyPort is not disabled.
+
++ Steps:
+
+	+ Connect to the EC2 under the cluster then run the following command:
+
+	```bash
+		sudo vi /etc/kubernetes/kubelet/kubelet-config.json
+	```
+	 
+	+ Edit:
+
+	```json
+		readOnlyPort: 10255
+	```
+
+	+ Then run the following command:
+	```bash
+		sudo systemctl restart kubelet
+	```
+
++ Expected result: Read-only port is exposed on the host, which may leak sensitive state information.
+
+🔹 CIS 3.2.7 - eventRecordQPS setting is unreasonable
++ Test objective: Verify whether the event record rate setting is reasonable.
+
++ Steps:
+
+	+ Connect to the EC2 under the cluster then run the following command:
+
+	```bash
+		sudo vi /etc/kubernetes/kubelet/kubelet-config.json
+	```
+	 
+	+ Edit:
+
+	```json
+		eventRecordQPS: -1
+	```
+
+	+ Then run the following command:
+	```bash
+		sudo systemctl restart kubelet
+	```
+
++ Expected result: Negative value means unlimited speed, which may cause log flooding and violate best practices.
+
+[![Video Demo](https://img.youtube.com/vi/xlhhdjzOTjE/0.jpg)](https://youtu.be/xlhhdjzOTjE)
 
 
-# 🔚 7 Conclusion
+
+# 🔚 8 Conclusion
 
 This project focuses on the automation of security compliance of Amazon EKS clusters, with four key highlights:
 
