@@ -2450,6 +2450,7 @@ def cis_5_1_3(session, cluster_name):
     print("CIS 5.1.3 Scan Completed")
     return result
 
+# 5.1.4 Minimize Container Registries to only those approved (Automated)
 def cis_5_1_4(kubeconfig, cluster_name):
 
     kclient = kubernetes.client.ApiClient(configuration=kubeconfig)
