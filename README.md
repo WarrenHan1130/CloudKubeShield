@@ -35,9 +35,9 @@ This project focuses on continuous EKS security assessments and automatic remedi
 	- [5.2 Initial Tool Configuration](#52-initial-tool-configuration)
 	- [5.3 Automatic scanning and report generation](#53-automatic-scanning-and-report-generation)
 - 🚑 [Remediation](#-6-remediation)
-	-[6.1 CIS control remediations](#61-cis-control-remediations)
-		-[6.1 CIS Controls need manual remediations](#611-cis-controls-need-manual-remediations)
-		-[6.1 CIS Controls support automatic remediation](#612-cis-controls-support-automatic-remediation)
+	- [6.1 CIS control remediations](#61-cis-control-remediations)
+		- [6.1.1 CIS Controls need manual remediations](#611-cis-controls-need-manual-remediations)
+		- [6.1.2 CIS Controls support automatic remediation](#612-cis-controls-support-automatic-remediation)
 - 🧩 [Remediation examples](#-7-remediation-example)
 - 🔚 [Conclusion](#-8-Conclusion)
 
@@ -550,13 +550,13 @@ In this part, we will introduce how to deploy our code step by step.
 		aws --version
 	```
 	+ The output should be similar to:
-	```json
+	```text
 		aws-cli/2.x.x Python/3.x.x ...
 	```
 + 🪟 Windows
 
 	+ Download the MSI installer
-	```json
+	```text
 		https://awscli.amazonaws.com/AWSCLIV2.msi
 	```
 
@@ -570,7 +570,7 @@ In this part, we will introduce how to deploy our code step by step.
 		aws --version
 	```
 	+ The output should be similar to:
-	```json
+	```text
 		aws-cli/2.x.x Python/3.x.x Windows/10 exe/AMD64
 	```
 
@@ -816,7 +816,7 @@ The following controls are fully can be automatically remediated after scan fini
 	 
 	+ Edit:
 
-	```json
+	```text
 		authentication:
 			anonymous:
 				enabled: true
@@ -842,7 +842,7 @@ The following controls are fully can be automatically remediated after scan fini
 	 
 	+ Edit:
 
-	```json
+	```text
 		authorization
     		mode: AlwaysAllow
 	```
@@ -867,7 +867,7 @@ The following controls are fully can be automatically remediated after scan fini
 	 
 	+ Edit:
 
-	```json
+	```text
 		readOnlyPort: 10255
 	```
 
@@ -891,7 +891,7 @@ The following controls are fully can be automatically remediated after scan fini
 	 
 	+ Edit:
 
-	```json
+	```text
 		eventRecordQPS: -1
 	```
 
