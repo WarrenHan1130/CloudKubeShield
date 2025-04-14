@@ -26,7 +26,6 @@ This project focuses on continuous EKS security assessments and automatic remedi
     - [4.1 AWS EKS IAM Role Setup](#41-aws-eks-iam-role-setup)
 		- [4.1.1 AWS EKS IAM Role Setup: Cluster Role](#411-aws-eks-iam-role-setup-cluster-role)
     	- [4.1.2 AWS EKS IAM Role Setup: Node Role](#412-aws-eks-iam-role-setup-node-role)
-    	- [4.1.3 SNS Notification Deployment](#413-sns-notification-deployment)
     - [4.2 Use CloudFormation to create EKS network infrastructure](#42-use-cloudFormation-to-create-eks-network-infrastructure)
 	- [4.3 EKS Cluster Creation](#43-eks-cluster-creation)
     - [4.4 EKS Node Group Creation](#44-eks-node-group-creation)
@@ -259,6 +258,8 @@ After completing the selection of the trusted entity and use case, click the "Ne
 
 	+ AmazonEC2ContainerRegistryReadOnly: Grants read-only access to Amazon ECR, allowing nodes to pull container images from private registries.
 
+	+ AmazonSSMManagedInstanceCore: Allows EC2 instances to be remotely managed and operated through AWS Systems Manager (such as SSM Agent).
+
 + These policies ensure that EC2 worker nodes can communicate with the control plane, handle container networking, and retrieve container images securely from Amazon ECR.
 
 + "Set permissions boundary" is optional and can be skipped if not required. Click “Next” in the lower right corner to proceed to the final step of the role creation process.
@@ -289,6 +290,8 @@ Trust policy: The system has preset a trust policy that allows the service princ
 ![AWS EKS6](./ScreenShots/node_IAM_permission1.png)
 
 ![AWS EKS7](./ScreenShots/node_IAM_permission2.png)
+
+![AWS EKS88](./ScreenShots/node_IAM_permission3.png)
 
 ![AWS EKS8](./ScreenShots/node_role_name.png)
 
@@ -441,6 +444,38 @@ Finally, click Create to start the cluster creation process.
 ![AWS EKS16](./ScreenShots/cluster3.png)
 
 ![AWS EKS17](./ScreenShots/cluster4.png)
+
+✅ Step 8: EKS add IAM Access Entry operation process
++ 📍Page area: Access
+
++ Enter the EKS console, click the target cluster and switch to the Access page.
+
++ Click the "Create access entry" button
+
++ Fill in the IAM principal ARN
+
+	+ Select the IAM identity (such as user or role) to which you want to grant permissions, for example:
+	```text
+		arn:aws:iam::307946637372:user/Admin
+	```
++ Select Type as "Standard"
+
+	+ The Standard type is used to manually manage permissions.
+
++ Click "Next" to enter the Access Policy configuration page
+
++ Add Access Policy
+	+ Select and add the appropriate access policy.
+	```text
+		AmazonEKSAdminPolicy
+		AmazonEKSClusterAdminPolicy
+	```
+
++ Select Cluster as the access scope, which means it applies to the entire cluster, not a specific namespace.
+
++ Click “Next” → Review and confirm “Create”.
+
+After this, the IAM identity (such as the Admin user) has the authority to access and manage the EKS cluster.
 
 ## 4.4 EKS Node Group Creation
 ✅ Step 1: Configure basic information of the node group
@@ -901,6 +936,8 @@ The following controls are fully can be automatically remediated after scan fini
 	```
 
 + Expected result: Negative value means unlimited speed, which may cause log flooding and violate best practices.
+
+Click the image below to jump to our demo video on Youtube.
 
 [![Video Demo](https://img.youtube.com/vi/xlhhdjzOTjE/0.jpg)](https://youtu.be/xlhhdjzOTjE)
 
