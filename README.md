@@ -477,6 +477,12 @@ Finally, click Create to start the cluster creation process.
 
 After this, the IAM identity (such as the Admin user) has the authority to access and manage the EKS cluster.
 
+![AWS EKS117](./ScreenShots/cluster5.png)
+
+![AWS EKS127](./ScreenShots/cluster6.png)
+
+![AWS EKS137](./ScreenShots/cluster7.png)
+
 ## 4.4 EKS Node Group Creation
 ✅ Step 1: Configure basic information of the node group
 
